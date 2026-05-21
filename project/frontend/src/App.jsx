@@ -13,16 +13,16 @@ import {
 // ==================== FRONTEND MOCK DATA FALLBACKS ====================
 // Generates identical structure to Flask in case backend is offline
 const MOCK_DRIVERS = [
-  {"driver_id": "DR001", "name": "Alexander Sterling", "vehicle_type": "Mini Truck", "total_trips": 1405, "total_distance_km": 564300.0, "avg_speed_kmh": 67.4, "avatar_color": "#2563eb", "avg_score": 88.5},
-  {"driver_id": "DR002", "name": "Marcus Vance", "vehicle_type": "Mini Truck", "total_trips": 1367, "total_distance_km": 561200.0, "avg_speed_kmh": 68.1, "avatar_color": "#10b981", "avg_score": 82.4},
-  {"driver_id": "DR003", "name": "Elena Rostova", "vehicle_type": "Medium Cargo", "total_trips": 1289, "total_distance_km": 570900.0, "avg_speed_kmh": 65.2, "avatar_color": "#d97706", "avg_score": 79.1},
-  {"driver_id": "DR004", "name": "Devon Lane", "vehicle_type": "Heavy Cargo Truck", "total_trips": 1391, "total_distance_km": 581600.0, "avg_speed_kmh": 67.8, "avatar_color": "#ef4444", "avg_score": 58.4},
-  {"driver_id": "DR005", "name": "Ronald Richards", "vehicle_type": "Heavy Cargo Truck", "total_trips": 1353, "total_distance_km": 548900.0, "avg_speed_kmh": 67.6, "avatar_color": "#8b5cf6", "avg_score": 84.2},
-  {"driver_id": "DR006", "name": "Bessie Cooper", "vehicle_type": "Pickup Truck", "total_trips": 1328, "total_distance_km": 517500.0, "avg_speed_kmh": 67.2, "avatar_color": "#2563eb", "avg_score": 91.8},
-  {"driver_id": "DR007", "name": "Albert Flores", "vehicle_type": "Heavy Cargo Truck", "total_trips": 1392, "total_distance_km": 582300.0, "avg_speed_kmh": 68.0, "avatar_color": "#10b981", "avg_score": 74.3},
-  {"driver_id": "DR008", "name": "Courtney Henry", "vehicle_type": "Mini Truck", "total_trips": 1307, "total_distance_km": 552400.0, "avg_speed_kmh": 65.8, "avatar_color": "#d97706", "avg_score": 86.1},
-  {"driver_id": "DR009", "name": "Kathryn Murphy", "vehicle_type": "Mini Truck", "total_trips": 1204, "total_distance_km": 510700.0, "avg_speed_kmh": 67.4, "avatar_color": "#ef4444", "avg_score": 64.9},
-  {"driver_id": "DR010", "name": "Dianne Russell", "vehicle_type": "Mini Truck", "total_trips": 1412, "total_distance_km": 572900.0, "avg_speed_kmh": 66.1, "avatar_color": "#8b5cf6", "avg_score": 89.2}
+  {"driver_id": "DR001", "name": "Alexander Sterling", "vehicle_type": "Mini Truck", "total_trips": 1405, "total_distance_km": 564300.0, "avg_speed_kmh": 67.4, "avatar_color": "#2563eb", "avg_score": 88.5, "vehicle_id": "VH001", "total_odometer_km": 125430.0, "engine_total_hours": 2450.5},
+  {"driver_id": "DR002", "name": "Marcus Vance", "vehicle_type": "Mini Truck", "total_trips": 1367, "total_distance_km": 561200.0, "avg_speed_kmh": 68.1, "avatar_color": "#10b981", "avg_score": 82.4, "vehicle_id": "VH002", "total_odometer_km": 98750.0, "engine_total_hours": 1820.0},
+  {"driver_id": "DR003", "name": "Elena Rostova", "vehicle_type": "Medium Cargo", "total_trips": 1289, "total_distance_km": 570900.0, "avg_speed_kmh": 65.2, "avatar_color": "#d97706", "avg_score": 79.1, "vehicle_id": "VH003", "total_odometer_km": 164200.0, "engine_total_hours": 3120.2},
+  {"driver_id": "DR004", "name": "Devon Lane", "vehicle_type": "Heavy Cargo Truck", "total_trips": 1391, "total_distance_km": 581600.0, "avg_speed_kmh": 67.8, "avatar_color": "#ef4444", "avg_score": 58.4, "vehicle_id": "VH004", "total_odometer_km": 215300.0, "engine_total_hours": 4200.8},
+  {"driver_id": "DR005", "name": "Ronald Richards", "vehicle_type": "Heavy Cargo Truck", "total_trips": 1353, "total_distance_km": 548900.0, "avg_speed_kmh": 67.6, "avatar_color": "#8b5cf6", "avg_score": 84.2, "vehicle_id": "VH005", "total_odometer_km": 189400.0, "engine_total_hours": 3760.4},
+  {"driver_id": "DR006", "name": "Bessie Cooper", "vehicle_type": "Pickup Truck", "total_trips": 1328, "total_distance_km": 517500.0, "avg_speed_kmh": 67.2, "avatar_color": "#2563eb", "avg_score": 91.8, "vehicle_id": "VH006", "total_odometer_km": 72400.0, "engine_total_hours": 1120.0},
+  {"driver_id": "DR007", "name": "Albert Flores", "vehicle_type": "Heavy Cargo Truck", "total_trips": 1392, "total_distance_km": 582300.0, "avg_speed_kmh": 68.0, "avatar_color": "#10b981", "avg_score": 74.3, "vehicle_id": "VH007", "total_odometer_km": 234100.0, "engine_total_hours": 4980.5},
+  {"driver_id": "DR008", "name": "Courtney Henry", "vehicle_type": "Mini Truck", "total_trips": 1307, "total_distance_km": 552400.0, "avg_speed_kmh": 65.8, "avatar_color": "#d97706", "avg_score": 86.1, "vehicle_id": "VH008", "total_odometer_km": 114500.0, "engine_total_hours": 2180.2},
+  {"driver_id": "DR009", "name": "Kathryn Murphy", "vehicle_type": "Mini Truck", "total_trips": 1204, "total_distance_km": 510700.0, "avg_speed_kmh": 67.4, "avatar_color": "#ef4444", "avg_score": 64.9, "vehicle_id": "VH009", "total_odometer_km": 89200.0, "engine_total_hours": 1650.0},
+  {"driver_id": "DR010", "name": "Dianne Russell", "vehicle_type": "Mini Truck", "total_trips": 1412, "total_distance_km": 572900.0, "avg_speed_kmh": 66.1, "avatar_color": "#8b5cf6", "avg_score": 89.2, "vehicle_id": "VH010", "total_odometer_km": 142100.0, "engine_total_hours": 2980.1}
 ];
 
 const MOCK_VEHICLES = {
@@ -173,57 +173,7 @@ const getMockJourneyDetails = (journeyId, driverId) => {
   };
 };
 
-// ==================== DRIVER ENRICHMENT UTILITIES ====================
-// Real SQL DB contains DR001 to DR040. Since the DB contains raw telemetry,
-// we enrich driver profiles with highly realistic, premium fleet names,
-// brand-aligned avatar colors, and designated vehicle types.
-const ENRICHED_NAMES = {
-  "DR001": "Alexander Sterling",
-  "DR002": "Marcus Vance",
-  "DR003": "Elena Rostova",
-  "DR004": "Devon Lane",
-  "DR005": "Ronald Richards",
-  "DR006": "Bessie Cooper",
-  "DR007": "Albert Flores",
-  "DR008": "Courtney Henry",
-  "DR009": "Kathryn Murphy",
-  "DR010": "Dianne Russell",
-  "DR011": "Arthur Pendelton",
-  "DR012": "Beatrice Vance",
-  "DR013": "Christian Bale",
-  "DR014": "Diana Prince",
-  "DR015": "Ethan Hunt",
-  "DR016": "Fiona Gallagher",
-  "DR017": "George Clooney",
-  "DR018": "Hannah Abbott",
-  "DR019": "Ian Malcolm",
-  "DR020": "Julia Roberts",
-  "DR021": "Kevin Bacon",
-  "DR022": "Laura Croft",
-  "DR023": "Michael Scott",
-  "DR024": "Natalie Portman",
-  "DR025": "Oliver Queen",
-  "DR026": "Penelope Cruz",
-  "DR027": "Quentin Tarantino",
-  "DR028": "Rachel Green",
-  "DR029": "Samuel Jackson",
-  "DR030": "Tony Stark",
-  "DR031": "Ursula Corbero",
-  "DR032": "Victor Stone",
-  "DR033": "Wanda Maximoff",
-  "DR034": "Xavier Renegade",
-  "DR035": "Yolanda Adams",
-  "DR036": "Zachary Levi",
-  "DR037": "Amelia Earhart",
-  "DR038": "Bruce Wayne",
-  "DR039": "Clark Kent",
-  "DR040": "Diana Ross"
-};
-
-const getDriverName = (driverId) => {
-  return ENRICHED_NAMES[driverId] || `Driver ${driverId.replace('DR', '')}`;
-};
-
+// ==================== DRIVER UTILITIES ====================
 const getDriverColor = (driverId) => {
   const colors = [
     "#2563eb", // blue-600
@@ -242,20 +192,6 @@ const getDriverColor = (driverId) => {
     hash = driverId.charCodeAt(i) + ((hash << 5) - hash);
   }
   return colors[Math.abs(hash) % colors.length];
-};
-
-const getDriverVehicleType = (driverId) => {
-  const types = [
-    "Mini Truck",
-    "Medium Cargo",
-    "Heavy Cargo Truck",
-    "Pickup Truck"
-  ];
-  let hash = 0;
-  for (let i = 0; i < driverId.length; i++) {
-    hash = driverId.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return types[Math.abs(hash) % types.length];
 };
 
 // Clean float32/float64 decimal precision issues from SQL Server telemetry
@@ -324,21 +260,26 @@ export default function App() {
         if (!res.ok) throw new Error('API offline');
         const data = await res.json();
         
-        // Enrich the raw SQL driver objects so that the UI can render
-        // them beautifully without any rendering crashes.
         const enriched = data.map(d => ({
           ...d,
-          name: getDriverName(d.driver_id),
+          name: d.driver_name,
           avatar_color: getDriverColor(d.driver_id),
-          vehicle_type: getDriverVehicleType(d.driver_id)
+          vehicle_type: d.vehicle_type,
+          vehicle_id: d.vehicle_id
         }));
         
         setDrivers(enriched);
         setIsUsingMock(false);
+        if (enriched.length > 0) {
+          setActiveDriverId(enriched[0].driver_id);
+        }
       } catch (err) {
         console.warn("Backend API not reachable. Switching to high-fidelity frontend fallback mock data.");
         setDrivers(MOCK_DRIVERS);
         setIsUsingMock(true);
+        if (MOCK_DRIVERS.length > 0) {
+          setActiveDriverId(MOCK_DRIVERS[0].driver_id);
+        }
       } finally {
         setIsLoadingDrivers(false);
       }
@@ -500,7 +441,7 @@ export default function App() {
   const totalFleetDist = drivers.reduce((acc, curr) => acc + curr.total_distance_km, 0);
 
   return (
-    <div className="h-full flex flex-col font-sans bg-[#f8fafc] text-slate-700 select-none">
+    <div className="h-full flex flex-col font-sans bg-[#f8fafc] text-slate-700 select-text">
       
       {/* -------------------- HEADER NAVBAR -------------------- */}
       <header className="h-16 flex items-center justify-between px-6 bg-white border-b border-slate-200/80 shrink-0 shadow-sm z-10">
@@ -648,7 +589,7 @@ export default function App() {
           ) : (
             <>
               {/* -------------------- PANEL 1: DRIVER TRIPS (MIDDLE COLUMN) -------------------- */}
-              <section className={`w-full lg:w-80 xl:w-96 border-r border-slate-200 bg-white flex flex-col shrink-0 z-0 ${
+              <section className={`w-full lg:w-64 xl:w-80 border-r border-slate-200 bg-white flex flex-col shrink-0 z-0 ${
                 mobileViewTab === 'journeys' ? 'flex' : 'hidden lg:flex'
               }`}>
             {/* Active Driver Profile Header */}
@@ -683,13 +624,13 @@ export default function App() {
                 <div className="bg-slate-50 border border-slate-200/50 p-2.5 rounded-xl text-center">
                   <p className="text-[9px] text-slate-400 font-bold tracking-wide uppercase mb-0.5">Odometer Total</p>
                   <p className="text-sm font-extrabold text-slate-800 font-outfit">
-                    {Math.round(activeDriver.total_odometer_km || 120400).toLocaleString()} km
+                    {Math.round(activeDriver.total_odometer_km ?? 120400).toLocaleString()} km
                   </p>
                 </div>
                 <div className="bg-slate-50 border border-slate-200/50 p-2.5 rounded-xl text-center">
                   <p className="text-[9px] text-slate-400 font-bold tracking-wide uppercase mb-0.5">Engine Hours</p>
                   <p className="text-sm font-extrabold text-slate-800 font-outfit">
-                    {Math.round(activeDriver.engine_total_hours || 2450).toLocaleString()} hrs
+                    {Math.round(activeDriver.engine_total_hours ?? 2450).toLocaleString()} hrs
                   </p>
                 </div>
               </div>
@@ -1197,53 +1138,6 @@ export default function App() {
 
                   </div>
 
-                  {/* Speed Profile telemetry chart */}
-                  <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-premium hover:shadow-premium-lg transition-shadow">
-                    <h3 className="text-sm font-extrabold text-slate-800 font-outfit tracking-wide flex items-center gap-2 uppercase border-b border-slate-100 pb-3.5 mb-4">
-                      <Activity className="w-4.5 h-4.5 text-brand-500" /> Speed Profile Telematics
-                    </h3>
-                    <div className="h-44 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart
-                          data={journeyDetails.speed_profile}
-                          margin={{ top: 10, right: 10, left: -25, bottom: 0 }}
-                        >
-                          <defs>
-                            <linearGradient id="colorSpeed" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
-                              <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                          <XAxis dataKey="time" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
-                          <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
-                          <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '11px', fontWeight: 'bold' }} />
-                          <Area type="monotone" dataKey="speed" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSpeed)" name="Speed (km/h)" />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-
-                  {/* Recompute action block */}
-                  <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-premium flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-3 bg-brand-50 rounded-2xl text-brand-500 shadow-sm shrink-0">
-                        <Info className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-extrabold text-slate-800 font-outfit leading-tight mb-0.5">Need to force recomputations?</h4>
-                        <p className="text-xs text-slate-400 font-medium leading-relaxed max-w-md">You can rerun the rule-based safety model deductions, fuel prediction models, and diagnostics algorithms on this trip anytime.</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={handleRecompute}
-                      disabled={isRecomputing}
-                      className="px-5 py-3 bg-brand-500 hover:bg-brand-600 active:scale-95 disabled:opacity-75 disabled:active:scale-100 text-white text-xs font-bold font-outfit rounded-2xl shadow-brand-glow flex items-center gap-2 transition-all cursor-pointer"
-                    >
-                      <RefreshCw className={`w-4 h-4 shrink-0 ${isRecomputing ? 'animate-spin' : ''}`} />
-                      {isRecomputing ? 'Running safety models...' : 'Recompute Safety Models'}
-                    </button>
-                  </div>
 
                 </div>
               </div>
