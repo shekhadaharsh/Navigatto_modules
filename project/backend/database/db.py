@@ -41,6 +41,8 @@ else:
         f"mssql+pyodbc://{DB_USER}:{DB_PASSWORD}"
         f"@{DB_HOST}/{DB_NAME}"
         f"?driver=ODBC+Driver+17+for+SQL+Server"
+        f"&Encrypt=yes"
+        f"&TrustServerCertificate=yes"
     )
 
 
