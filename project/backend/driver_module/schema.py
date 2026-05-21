@@ -74,11 +74,16 @@ class TripSummary(BaseModel):
 # Used in: GET /drivers/ and GET /drivers/{driver_id}
 # ─────────────────────────────────────────
 class DriverSummary(BaseModel):
-    driver_id:      str
-    total_trips:    int
-    avg_score:      float
-    risk_level:     str
-    total_distance: float   # total km driven
+    driver_id:          str
+    driver_name:        str
+    vehicle_type:       str
+    vehicle_id:         str
+    total_odometer_km:  float
+    engine_total_hours: float
+    total_trips:        int
+    avg_score:          float
+    risk_level:         str
+    total_distance:     float   # total km driven
 
 
 # ─────────────────────────────────────────
@@ -87,11 +92,16 @@ class DriverSummary(BaseModel):
 # Used in: GET /drivers/{driver_id}
 # ─────────────────────────────────────────
 class DriverDetail(BaseModel):
-    driver_id:        str
-    total_trips:      int
-    avg_score:        float
-    risk_level:       str
-    total_distance:   float
+    driver_id:          str
+    driver_name:        str
+    vehicle_type:       str
+    vehicle_id:         str
+    total_odometer_km:  float
+    engine_total_hours: float
+    total_trips:        int
+    avg_score:          float
+    risk_level:         str
+    total_distance:     float
 
     # Avg event counts across all trips
     avg_accel_events:    float

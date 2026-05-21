@@ -13,16 +13,16 @@ import {
 // ==================== FRONTEND MOCK DATA FALLBACKS ====================
 // Generates identical structure to Flask in case backend is offline
 const MOCK_DRIVERS = [
-  {"driver_id": "DR001", "name": "Alexander Sterling", "vehicle_type": "Mini Truck", "total_trips": 1405, "total_distance_km": 564300.0, "avg_speed_kmh": 67.4, "avatar_color": "#2563eb", "avg_score": 88.5},
-  {"driver_id": "DR002", "name": "Marcus Vance", "vehicle_type": "Mini Truck", "total_trips": 1367, "total_distance_km": 561200.0, "avg_speed_kmh": 68.1, "avatar_color": "#10b981", "avg_score": 82.4},
-  {"driver_id": "DR003", "name": "Elena Rostova", "vehicle_type": "Medium Cargo", "total_trips": 1289, "total_distance_km": 570900.0, "avg_speed_kmh": 65.2, "avatar_color": "#d97706", "avg_score": 79.1},
-  {"driver_id": "DR004", "name": "Devon Lane", "vehicle_type": "Heavy Cargo Truck", "total_trips": 1391, "total_distance_km": 581600.0, "avg_speed_kmh": 67.8, "avatar_color": "#ef4444", "avg_score": 58.4},
-  {"driver_id": "DR005", "name": "Ronald Richards", "vehicle_type": "Heavy Cargo Truck", "total_trips": 1353, "total_distance_km": 548900.0, "avg_speed_kmh": 67.6, "avatar_color": "#8b5cf6", "avg_score": 84.2},
-  {"driver_id": "DR006", "name": "Bessie Cooper", "vehicle_type": "Pickup Truck", "total_trips": 1328, "total_distance_km": 517500.0, "avg_speed_kmh": 67.2, "avatar_color": "#2563eb", "avg_score": 91.8},
-  {"driver_id": "DR007", "name": "Albert Flores", "vehicle_type": "Heavy Cargo Truck", "total_trips": 1392, "total_distance_km": 582300.0, "avg_speed_kmh": 68.0, "avatar_color": "#10b981", "avg_score": 74.3},
-  {"driver_id": "DR008", "name": "Courtney Henry", "vehicle_type": "Mini Truck", "total_trips": 1307, "total_distance_km": 552400.0, "avg_speed_kmh": 65.8, "avatar_color": "#d97706", "avg_score": 86.1},
-  {"driver_id": "DR009", "name": "Kathryn Murphy", "vehicle_type": "Mini Truck", "total_trips": 1204, "total_distance_km": 510700.0, "avg_speed_kmh": 67.4, "avatar_color": "#ef4444", "avg_score": 64.9},
-  {"driver_id": "DR010", "name": "Dianne Russell", "vehicle_type": "Mini Truck", "total_trips": 1412, "total_distance_km": 572900.0, "avg_speed_kmh": 66.1, "avatar_color": "#8b5cf6", "avg_score": 89.2}
+  {"driver_id": "DR001", "name": "Alexander Sterling", "vehicle_type": "Mini Truck", "total_trips": 1405, "total_distance_km": 564300.0, "avg_speed_kmh": 67.4, "avatar_color": "#2563eb", "avg_score": 88.5, "vehicle_id": "VH001", "total_odometer_km": 125430.0, "engine_total_hours": 2450.5},
+  {"driver_id": "DR002", "name": "Marcus Vance", "vehicle_type": "Mini Truck", "total_trips": 1367, "total_distance_km": 561200.0, "avg_speed_kmh": 68.1, "avatar_color": "#10b981", "avg_score": 82.4, "vehicle_id": "VH002", "total_odometer_km": 98750.0, "engine_total_hours": 1820.0},
+  {"driver_id": "DR003", "name": "Elena Rostova", "vehicle_type": "Medium Cargo", "total_trips": 1289, "total_distance_km": 570900.0, "avg_speed_kmh": 65.2, "avatar_color": "#d97706", "avg_score": 79.1, "vehicle_id": "VH003", "total_odometer_km": 164200.0, "engine_total_hours": 3120.2},
+  {"driver_id": "DR004", "name": "Devon Lane", "vehicle_type": "Heavy Cargo Truck", "total_trips": 1391, "total_distance_km": 581600.0, "avg_speed_kmh": 67.8, "avatar_color": "#ef4444", "avg_score": 58.4, "vehicle_id": "VH004", "total_odometer_km": 215300.0, "engine_total_hours": 4200.8},
+  {"driver_id": "DR005", "name": "Ronald Richards", "vehicle_type": "Heavy Cargo Truck", "total_trips": 1353, "total_distance_km": 548900.0, "avg_speed_kmh": 67.6, "avatar_color": "#8b5cf6", "avg_score": 84.2, "vehicle_id": "VH005", "total_odometer_km": 189400.0, "engine_total_hours": 3760.4},
+  {"driver_id": "DR006", "name": "Bessie Cooper", "vehicle_type": "Pickup Truck", "total_trips": 1328, "total_distance_km": 517500.0, "avg_speed_kmh": 67.2, "avatar_color": "#2563eb", "avg_score": 91.8, "vehicle_id": "VH006", "total_odometer_km": 72400.0, "engine_total_hours": 1120.0},
+  {"driver_id": "DR007", "name": "Albert Flores", "vehicle_type": "Heavy Cargo Truck", "total_trips": 1392, "total_distance_km": 582300.0, "avg_speed_kmh": 68.0, "avatar_color": "#10b981", "avg_score": 74.3, "vehicle_id": "VH007", "total_odometer_km": 234100.0, "engine_total_hours": 4980.5},
+  {"driver_id": "DR008", "name": "Courtney Henry", "vehicle_type": "Mini Truck", "total_trips": 1307, "total_distance_km": 552400.0, "avg_speed_kmh": 65.8, "avatar_color": "#d97706", "avg_score": 86.1, "vehicle_id": "VH008", "total_odometer_km": 114500.0, "engine_total_hours": 2180.2},
+  {"driver_id": "DR009", "name": "Kathryn Murphy", "vehicle_type": "Mini Truck", "total_trips": 1204, "total_distance_km": 510700.0, "avg_speed_kmh": 67.4, "avatar_color": "#ef4444", "avg_score": 64.9, "vehicle_id": "VH009", "total_odometer_km": 89200.0, "engine_total_hours": 1650.0},
+  {"driver_id": "DR010", "name": "Dianne Russell", "vehicle_type": "Mini Truck", "total_trips": 1412, "total_distance_km": 572900.0, "avg_speed_kmh": 66.1, "avatar_color": "#8b5cf6", "avg_score": 89.2, "vehicle_id": "VH010", "total_odometer_km": 142100.0, "engine_total_hours": 2980.1}
 ];
 
 const MOCK_VEHICLES = {
@@ -173,57 +173,7 @@ const getMockJourneyDetails = (journeyId, driverId) => {
   };
 };
 
-// ==================== DRIVER ENRICHMENT UTILITIES ====================
-// Real SQL DB contains DR001 to DR040. Since the DB contains raw telemetry,
-// we enrich driver profiles with highly realistic, premium fleet names,
-// brand-aligned avatar colors, and designated vehicle types.
-const ENRICHED_NAMES = {
-  "DR001": "Alexander Sterling",
-  "DR002": "Marcus Vance",
-  "DR003": "Elena Rostova",
-  "DR004": "Devon Lane",
-  "DR005": "Ronald Richards",
-  "DR006": "Bessie Cooper",
-  "DR007": "Albert Flores",
-  "DR008": "Courtney Henry",
-  "DR009": "Kathryn Murphy",
-  "DR010": "Dianne Russell",
-  "DR011": "Arthur Pendelton",
-  "DR012": "Beatrice Vance",
-  "DR013": "Christian Bale",
-  "DR014": "Diana Prince",
-  "DR015": "Ethan Hunt",
-  "DR016": "Fiona Gallagher",
-  "DR017": "George Clooney",
-  "DR018": "Hannah Abbott",
-  "DR019": "Ian Malcolm",
-  "DR020": "Julia Roberts",
-  "DR021": "Kevin Bacon",
-  "DR022": "Laura Croft",
-  "DR023": "Michael Scott",
-  "DR024": "Natalie Portman",
-  "DR025": "Oliver Queen",
-  "DR026": "Penelope Cruz",
-  "DR027": "Quentin Tarantino",
-  "DR028": "Rachel Green",
-  "DR029": "Samuel Jackson",
-  "DR030": "Tony Stark",
-  "DR031": "Ursula Corbero",
-  "DR032": "Victor Stone",
-  "DR033": "Wanda Maximoff",
-  "DR034": "Xavier Renegade",
-  "DR035": "Yolanda Adams",
-  "DR036": "Zachary Levi",
-  "DR037": "Amelia Earhart",
-  "DR038": "Bruce Wayne",
-  "DR039": "Clark Kent",
-  "DR040": "Diana Ross"
-};
-
-const getDriverName = (driverId) => {
-  return ENRICHED_NAMES[driverId] || `Driver ${driverId.replace('DR', '')}`;
-};
-
+// ==================== DRIVER UTILITIES ====================
 const getDriverColor = (driverId) => {
   const colors = [
     "#2563eb", // blue-600
@@ -242,20 +192,6 @@ const getDriverColor = (driverId) => {
     hash = driverId.charCodeAt(i) + ((hash << 5) - hash);
   }
   return colors[Math.abs(hash) % colors.length];
-};
-
-const getDriverVehicleType = (driverId) => {
-  const types = [
-    "Mini Truck",
-    "Medium Cargo",
-    "Heavy Cargo Truck",
-    "Pickup Truck"
-  ];
-  let hash = 0;
-  for (let i = 0; i < driverId.length; i++) {
-    hash = driverId.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  return types[Math.abs(hash) % types.length];
 };
 
 // Clean float32/float64 decimal precision issues from SQL Server telemetry
@@ -298,6 +234,127 @@ const cleanTripDetails = (data) => {
   return data;
 };
 
+// --- COACHING INSIGHTS GENERATOR FOR FRONTEND ---
+const InsightIcon = ({ iconType, className }) => {
+  switch (iconType) {
+    case 'ShieldAlert':
+      return <ShieldAlert className={className} />;
+    case 'Gauge':
+      return <Gauge className={className} />;
+    case 'Clock':
+      return <Clock className={className} />;
+    case 'TrendingUp':
+      return <TrendingUp className={className} />;
+    case 'Compass':
+      return <Compass className={className} />;
+    default:
+      return <CheckCircle2 className={className} />;
+  }
+};
+
+const getDriverInsights = (details) => {
+  if (!details) return [];
+  const insights = [];
+  const score = details.driver_score?.score || 100;
+  
+  // 1. Check Speeding (highest severity priority)
+  const speedEvents = details.journey?.overspeed_count || 0;
+  const speedPenalty = Math.abs(details.driver_score?.breakdown?.overspeed || 0);
+  if (speedPenalty > 2 || speedEvents > 0) {
+    insights.push({
+      type: 'speeding',
+      text: 'Staying within speed limits improves fuel economy by up to 15% and ensures optimal driver safety ratings.',
+      icon: 'Gauge',
+      color: 'text-rose-600 bg-rose-50 border-rose-100',
+      chipLabel: '⚡ SAFETY RISK',
+      chipStyle: 'bg-rose-50 text-rose-700 border-rose-200/50',
+      estimate: 'Est. Impact: Prevent speeding alarms & reduce road risk',
+      penalty: speedPenalty || 5
+    });
+  }
+
+  // 2. Check Braking
+  const brakeEvents = details.journey?.brake_events || 0;
+  const brakePenalty = Math.abs(details.driver_score?.breakdown?.braking || 0);
+  if (brakePenalty > 2 || brakeEvents > 3) {
+    insights.push({
+      type: 'braking',
+      text: 'Maintain a 3-second safety gap to avoid harsh braking events, preserving brake pad life and passenger comfort.',
+      icon: 'ShieldAlert',
+      color: 'text-amber-600 bg-amber-50 border-amber-100',
+      chipLabel: '🔧 WEAR WARNING',
+      chipStyle: 'bg-amber-50 text-amber-700 border-amber-200/50',
+      estimate: 'Est. Impact: Extend brake pad lifecycle by 15-20%',
+      penalty: brakePenalty || 4
+    });
+  }
+  
+  // 3. Check Idling
+  const idleMin = details.journey?.idle_time_min || 0;
+  const idlePenalty = Math.abs(details.driver_score?.breakdown?.idle_time || 0);
+  if (idlePenalty > 2 || idleMin > 15) {
+    insights.push({
+      type: 'idling',
+      text: 'Turn off the engine during halts longer than 2 minutes to conserve fuel and minimize emissions.',
+      icon: 'Clock',
+      color: 'text-indigo-600 bg-indigo-50 border-indigo-100',
+      chipLabel: '🌱 ECO-DRIVING',
+      chipStyle: 'bg-indigo-50 text-indigo-700 border-indigo-200/50',
+      estimate: 'Est. Impact: Save ~0.8L fuel/hr during stops',
+      penalty: idlePenalty || 3
+    });
+  }
+
+  // 4. Check Acceleration
+  const accelEvents = details.journey?.acceleration_events || 0;
+  const accelPenalty = Math.abs(details.driver_score?.breakdown?.acceleration || 0);
+  if (accelPenalty > 2 || accelEvents > 3) {
+    insights.push({
+      type: 'accel',
+      text: 'Apply smooth, gradual acceleration inputs to enhance fuel economy and secure transported cargo.',
+      icon: 'TrendingUp',
+      color: 'text-orange-600 bg-orange-50 border-orange-100',
+      chipLabel: '🌱 ECO-DRIVING',
+      chipStyle: 'bg-orange-50 text-orange-700 border-orange-200/50',
+      estimate: 'Est. Impact: Save fuel and protect cargo suspension',
+      penalty: accelPenalty || 2
+    });
+  }
+
+  // 5. Check Cornering
+  const cornerEvents = details.journey?.cornering_events || 0;
+  const cornerPenalty = Math.abs(details.driver_score?.breakdown?.cornering || 0);
+  if (cornerPenalty > 2 || cornerEvents > 3) {
+    insights.push({
+      type: 'cornering',
+      text: 'Take wide, smooth turns at reduced speeds to control high lateral G-forces and vehicle roll.',
+      icon: 'Compass',
+      color: 'text-blue-600 bg-blue-50 border-blue-100',
+      chipLabel: '🔧 CARGO SECURITY',
+      chipStyle: 'bg-blue-50 text-blue-700 border-blue-200/50',
+      estimate: 'Est. Impact: Reduce lateral roll & stabilize load',
+      penalty: cornerPenalty || 1
+    });
+  }
+
+  // If no negative insights or excellent score
+  if (insights.length === 0 || score >= 92) {
+    return [{
+      type: 'perfect',
+      text: 'Perfect drive! Excellent speed control, minimal idling, and solid defensive handling throughout the journey.',
+      icon: 'CheckCircle2',
+      color: 'text-emerald-600 bg-emerald-50 border-emerald-100',
+      chipLabel: '🏆 CLASS LEADER',
+      chipStyle: 'bg-emerald-50 text-emerald-700 border-emerald-200/50',
+      estimate: 'Est. Impact: All systems operating at peak safety',
+      penalty: 0
+    }];
+  }
+
+  // Sort insights by penalty severity so that the biggest issue is shown first
+  return insights.sort((a, b) => b.penalty - a.penalty);
+};
+
 export default function App() {
   // --- UI STATES ---
   const [drivers, setDrivers] = useState([]);
@@ -334,21 +391,26 @@ export default function App() {
         if (!res.ok) throw new Error('API offline');
         const data = await res.json();
         
-        // Enrich the raw SQL driver objects so that the UI can render
-        // them beautifully without any rendering crashes.
         const enriched = data.map(d => ({
           ...d,
-          name: getDriverName(d.driver_id),
+          name: d.driver_name,
           avatar_color: getDriverColor(d.driver_id),
-          vehicle_type: getDriverVehicleType(d.driver_id)
+          vehicle_type: d.vehicle_type,
+          vehicle_id: d.vehicle_id
         }));
         
         setDrivers(enriched);
         setIsUsingMock(false);
+        if (enriched.length > 0) {
+          setActiveDriverId(enriched[0].driver_id);
+        }
       } catch (err) {
         console.warn("Backend API not reachable. Switching to high-fidelity frontend fallback mock data.");
         setDrivers(MOCK_DRIVERS);
         setIsUsingMock(true);
+        if (MOCK_DRIVERS.length > 0) {
+          setActiveDriverId(MOCK_DRIVERS[0].driver_id);
+        }
       } finally {
         setIsLoadingDrivers(false);
       }
@@ -610,7 +672,7 @@ export default function App() {
   const totalFleetDist = drivers.reduce((acc, curr) => acc + curr.total_distance_km, 0);
 
   return (
-    <div className="h-full flex flex-col font-sans bg-[#f8fafc] text-slate-700 select-none">
+    <div className="h-full flex flex-col font-sans bg-[#f8fafc] text-slate-700 select-text">
       
       {/* -------------------- HEADER NAVBAR -------------------- */}
       <header className="h-16 flex items-center justify-between px-6 bg-white border-b border-slate-200/80 shrink-0 shadow-sm z-10">
@@ -758,7 +820,7 @@ export default function App() {
           ) : (
             <>
               {/* -------------------- PANEL 1: DRIVER TRIPS (MIDDLE COLUMN) -------------------- */}
-              <section className={`w-full lg:w-80 xl:w-96 border-r border-slate-200 bg-white flex flex-col shrink-0 z-0 ${
+              <section className={`w-full lg:w-64 xl:w-80 border-r border-slate-200 bg-white flex flex-col shrink-0 z-0 ${
                 mobileViewTab === 'journeys' ? 'flex' : 'hidden lg:flex'
               }`}>
             {/* Active Driver Profile Header */}
@@ -793,13 +855,13 @@ export default function App() {
                 <div className="bg-slate-50 border border-slate-200/50 p-2.5 rounded-xl text-center">
                   <p className="text-[9px] text-slate-400 font-bold tracking-wide uppercase mb-0.5">Odometer Total</p>
                   <p className="text-sm font-extrabold text-slate-800 font-outfit">
-                    {Math.round(activeDriver.total_odometer_km || 120400).toLocaleString()} km
+                    {Math.round(activeDriver.total_odometer_km ?? 120400).toLocaleString()} km
                   </p>
                 </div>
                 <div className="bg-slate-50 border border-slate-200/50 p-2.5 rounded-xl text-center">
                   <p className="text-[9px] text-slate-400 font-bold tracking-wide uppercase mb-0.5">Engine Hours</p>
                   <p className="text-sm font-extrabold text-slate-800 font-outfit">
-                    {Math.round(activeDriver.engine_total_hours || 2450).toLocaleString()} hrs
+                    {Math.round(activeDriver.engine_total_hours ?? 2450).toLocaleString()} hrs
                   </p>
                 </div>
               </div>
@@ -1011,59 +1073,93 @@ export default function App() {
                               <span className="text-3xl font-black font-outfit text-slate-800 block leading-none">{journeyDetails.driver_score.score}</span>
                               <span className="text-[10px] text-slate-400 font-bold uppercase mt-1">out of 100</span>
                             </div>
-                          </div>
-
-                          {/* Quick Stats on events */}
-                          <div className="flex-1 min-w-0 space-y-2.5 text-xs w-full">
-                            <div className="flex items-center justify-between gap-2 text-slate-600">
-                              <span className="font-semibold text-slate-500 truncate">Accelerations</span>
-                              <span className="font-bold text-slate-800 shrink-0">{journeyDetails.journey.acceleration_events} events</span>
+                                           {/* Quick Stats on events */}
+                          <div className="flex-1 min-w-0 space-y-1.5 text-[11px] w-full">
+                            <div className="flex items-center justify-between gap-2 text-slate-600 p-1 hover:bg-slate-50 rounded-xl transition-all duration-200">
+                              <span className="font-bold text-slate-500 truncate flex items-center gap-2 select-none">
+                                <span className={`w-2 h-2 rounded-full shrink-0 ${
+                                  journeyDetails.journey.acceleration_events === 0 ? 'bg-emerald-500 shadow-sm shadow-emerald-400' : (journeyDetails.journey.acceleration_events < 4 ? 'bg-amber-500' : 'bg-rose-500')
+                                }`} />
+                                Accelerations
+                              </span>
+                              <span className="font-extrabold text-slate-700 shrink-0 bg-slate-100/80 px-2 py-0.5 rounded-lg text-[9.5px] font-outfit select-none">
+                                {journeyDetails.journey.acceleration_events} events
+                              </span>
                             </div>
-                            <div className="flex items-center justify-between gap-2 text-slate-600">
-                              <span className="font-semibold text-slate-500 truncate">Harsh Braking</span>
-                              <span className="font-bold text-slate-800 shrink-0">{journeyDetails.journey.brake_events} events</span>
+                            <div className="flex items-center justify-between gap-2 text-slate-600 p-1 hover:bg-slate-50 rounded-xl transition-all duration-200">
+                              <span className="font-bold text-slate-500 truncate flex items-center gap-2 select-none">
+                                <span className={`w-2 h-2 rounded-full shrink-0 ${
+                                  journeyDetails.journey.brake_events === 0 ? 'bg-emerald-500 shadow-sm shadow-emerald-400' : (journeyDetails.journey.brake_events < 4 ? 'bg-amber-500' : 'bg-rose-500')
+                                }`} />
+                                Harsh Braking
+                              </span>
+                              <span className="font-extrabold text-slate-700 shrink-0 bg-slate-100/80 px-2 py-0.5 rounded-lg text-[9.5px] font-outfit select-none">
+                                {journeyDetails.journey.brake_events} events
+                              </span>
                             </div>
-                            <div className="flex items-center justify-between gap-2 text-slate-600">
-                              <span className="font-semibold text-slate-500 truncate">Overspeeding</span>
-                              <span className="font-bold text-slate-800 shrink-0">{journeyDetails.journey.overspeed_count} events</span>
+                            <div className="flex items-center justify-between gap-2 text-slate-600 p-1 hover:bg-slate-50 rounded-xl transition-all duration-200">
+                              <span className="font-bold text-slate-500 truncate flex items-center gap-2 select-none">
+                                <span className={`w-2 h-2 rounded-full shrink-0 ${
+                                  journeyDetails.journey.overspeed_count === 0 ? 'bg-emerald-500 shadow-sm shadow-emerald-400' : (journeyDetails.journey.overspeed_count < 2 ? 'bg-amber-500' : 'bg-rose-500')
+                                }`} />
+                                Overspeeding
+                              </span>
+                              <span className="font-extrabold text-slate-700 shrink-0 bg-slate-100/80 px-2 py-0.5 rounded-lg text-[9.5px] font-outfit select-none">
+                                {journeyDetails.journey.overspeed_count} events
+                              </span>
                             </div>
-                            <div className="flex items-center justify-between gap-2 text-slate-600">
-                              <span className="font-semibold text-slate-500 truncate">Excessive Idling</span>
-                              <span className="font-bold text-slate-800 shrink-0">{(journeyDetails.journey.idle_time_min || 0).toFixed(1)} mins</span>
+                            <div className="flex items-center justify-between gap-2 text-slate-600 p-1 hover:bg-slate-50 rounded-xl transition-all duration-200">
+                              <span className="font-bold text-slate-500 truncate flex items-center gap-2 select-none">
+                                <span className={`w-2 h-2 rounded-full shrink-0 ${
+                                  (journeyDetails.journey.idle_time_min || 0) < 10 ? 'bg-emerald-500 shadow-sm shadow-emerald-400' : ((journeyDetails.journey.idle_time_min || 0) < 25 ? 'bg-amber-500' : 'bg-rose-500')
+                                }`} />
+                                Excessive Idling
+                              </span>
+                              <span className="font-extrabold text-slate-700 shrink-0 bg-slate-100/80 px-2 py-0.5 rounded-lg text-[9.5px] font-outfit select-none">
+                                {(journeyDetails.journey.idle_time_min || 0).toFixed(1)} mins
+                              </span>
                             </div>
-                          </div>
+                          </div>             </div>
                         </div>
                       </div>
 
-                      {/* Deductions Breakdown */}
-                      <div className="bg-slate-50 rounded-2xl border border-slate-200/50 p-4">
-                        <span className="text-[9px] text-slate-400 font-bold tracking-wide uppercase block mb-3">Model Safety Penalty Deductions</span>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 text-[11px] font-semibold text-slate-600">
-                          <div className="flex flex-col gap-1">
-                            <span className="text-slate-400">Accel Penalty</span>
-                            <span className="text-rose-600 font-extrabold font-outfit text-sm">{journeyDetails.driver_score.breakdown.acceleration} pts</span>
+                      {/* Telematics Coaching Insights */}
+                      {(() => {
+                        const insights = getDriverInsights(journeyDetails);
+                        const topInsight = insights[0] || {
+                          text: "Excellent defensive driving! All safety metrics are within optimal green thresholds.",
+                          icon: "CheckCircle2",
+                          color: "text-emerald-600 bg-emerald-50 border-emerald-100",
+                          chipLabel: "🏆 CLASS LEADER",
+                          chipStyle: "bg-emerald-50 text-emerald-700 border-emerald-200/50",
+                          estimate: "Est. Impact: All systems operating at peak safety"
+                        };
+                        return (
+                          <div className="bg-slate-50/70 rounded-2xl border border-slate-200/50 p-4 transition-all duration-300 hover:bg-slate-50/95 hover:-translate-y-0.5 hover:shadow-premium-sm">
+                            <div className="flex items-center justify-between gap-2 mb-3">
+                              <span className="text-[10px] font-extrabold tracking-wider uppercase bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 bg-clip-text text-transparent flex items-center gap-1.5 select-none">
+                                <Activity className="w-3.5 h-3.5 text-violet-500 animate-pulse" /> Telematics AI Coach
+                              </span>
+                              <span className={`text-[8px] font-extrabold px-2 py-0.5 rounded-full border tracking-wider select-none shrink-0 ${topInsight.chipStyle}`}>
+                                {topInsight.chipLabel}
+                              </span>
+                            </div>
+                            <div className="flex gap-3.5 items-start">
+                              <div className={`p-2.5 rounded-xl shrink-0 border ${topInsight.color} flex items-center justify-center shadow-sm`}>
+                                <InsightIcon iconType={topInsight.icon} className="w-5 h-5 animate-bounce-slow" />
+                              </div>
+                              <div className="flex flex-col gap-1 min-w-0">
+                                <div className="text-[11px] font-bold text-slate-700 leading-relaxed">
+                                  {topInsight.text}
+                                </div>
+                                <div className="text-[9.5px] font-bold text-slate-400 italic">
+                                  {topInsight.estimate}
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex flex-col gap-1">
-                            <span className="text-slate-400">Braking Penalty</span>
-                            <span className="text-rose-600 font-extrabold font-outfit text-sm">{journeyDetails.driver_score.breakdown.braking} pts</span>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <span className="text-slate-400">Speed Penalty</span>
-                            <span className="text-rose-600 font-extrabold font-outfit text-sm">{journeyDetails.driver_score.breakdown.overspeed} pts</span>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <span className="text-slate-400">Corner Penalty</span>
-                            <span className="text-rose-600 font-extrabold font-outfit text-sm">{journeyDetails.driver_score.breakdown.cornering} pts</span>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <span className="text-slate-400">Idle Penalty</span>
-                            <span className="text-rose-600 font-extrabold font-outfit text-sm">{journeyDetails.driver_score.breakdown.idle_time} pts</span>
-                          </div>
-                          <div className="flex flex-col gap-1 justify-center">
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 text-center w-full max-w-[80px]">Baseline: 100</span>
-                          </div>
-                        </div>
-                      </div>
+                        );
+                      })()}
                     </div>
 
                     {/* -------------------- CARD 2: FUEL THEFT CARD -------------------- */}
@@ -1325,53 +1421,6 @@ export default function App() {
 
                   </div>
 
-                  {/* Speed Profile telemetry chart */}
-                  <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-premium hover:shadow-premium-lg transition-shadow">
-                    <h3 className="text-sm font-extrabold text-slate-800 font-outfit tracking-wide flex items-center gap-2 uppercase border-b border-slate-100 pb-3.5 mb-4">
-                      <Activity className="w-4.5 h-4.5 text-brand-500" /> Speed Profile Telematics
-                    </h3>
-                    <div className="h-44 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart
-                          data={journeyDetails.speed_profile}
-                          margin={{ top: 10, right: 10, left: -25, bottom: 0 }}
-                        >
-                          <defs>
-                            <linearGradient id="colorSpeed" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="#10b981" stopOpacity={0.2}/>
-                              <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                            </linearGradient>
-                          </defs>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                          <XAxis dataKey="time" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
-                          <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
-                          <Tooltip contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '11px', fontWeight: 'bold' }} />
-                          <Area type="monotone" dataKey="speed" stroke="#10b981" strokeWidth={2.5} fillOpacity={1} fill="url(#colorSpeed)" name="Speed (km/h)" />
-                        </AreaChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-
-                  {/* Recompute action block */}
-                  <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-premium flex flex-wrap items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                      <div className="p-3 bg-brand-50 rounded-2xl text-brand-500 shadow-sm shrink-0">
-                        <Info className="w-6 h-6" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-extrabold text-slate-800 font-outfit leading-tight mb-0.5">Need to force recomputations?</h4>
-                        <p className="text-xs text-slate-400 font-medium leading-relaxed max-w-md">You can rerun the rule-based safety model deductions, fuel prediction models, and diagnostics algorithms on this trip anytime.</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={handleRecompute}
-                      disabled={isRecomputing}
-                      className="px-5 py-3 bg-brand-500 hover:bg-brand-600 active:scale-95 disabled:opacity-75 disabled:active:scale-100 text-white text-xs font-bold font-outfit rounded-2xl shadow-brand-glow flex items-center gap-2 transition-all cursor-pointer"
-                    >
-                      <RefreshCw className={`w-4 h-4 shrink-0 ${isRecomputing ? 'animate-spin' : ''}`} />
-                      {isRecomputing ? 'Running safety models...' : 'Recompute Safety Models'}
-                    </button>
-                  </div>
 
                 </div>
               </div>
