@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from database.db import get_db
-from driver_module.model import Trip
+from driver_module.model import Trip, Driver, Vehicle
 from driver_module.scorer import calculate_trip_score, get_risk_level
 from driver_module.schema import (
     DriverSummary,
@@ -72,11 +72,36 @@ def get_all_drivers(db: Session = Depends(get_db)):
 
     result = []
     for row in rows:
-        trips = db.query(Trip).filter(Trip.driver_id == row.driver_id).all()
+        trips = db.query(Trip).filter(Trip.driver_id == row.driver_id).order_by(Trip.trip_start.desc()).all()
         avg_score = _avg_score_for_trips(trips)
+        
+        # Get driver name from Driver table in DB
+        driver_obj = db.query(Driver).filter(Driver.driver_id == row.driver_id).first()
+        driver_name = driver_obj.driver_name if (driver_obj and driver_obj.driver_name) else f"Driver {row.driver_id.replace('DR', '')}"
+        
+        # Get vehicle type, vehicle_id, odometer, and engine hours from the latest trip
+        latest_trip = trips[0] if trips else None
+        vehicle_type = "Unknown"
+        vehicle_id = "N/A"
+        total_odometer = 0.0
+        engine_hours = 0.0
+        if latest_trip:
+            vehicle_id = latest_trip.vehicle_id or "N/A"
+            total_odometer = latest_trip.Total_Odometer or 0.0
+            engine_hours = latest_trip.engine_total_hour or 0.0
+            if hasattr(latest_trip, "vehicle_type") and latest_trip.vehicle_type:
+                vehicle_type = latest_trip.vehicle_type
+            elif latest_trip.vehicle and latest_trip.vehicle.vehicle_type:
+                vehicle_type = latest_trip.vehicle.vehicle_type
+
         result.append(
             DriverSummary(
                 driver_id=row.driver_id,
+                driver_name=driver_name,
+                vehicle_type=vehicle_type,
+                vehicle_id=vehicle_id,
+                total_odometer_km=total_odometer,
+                engine_total_hours=engine_hours,
                 total_trips=row.total_trips,
                 avg_score=avg_score,
                 risk_level=get_risk_level(avg_score),
@@ -135,10 +160,29 @@ def get_leaderboard(db: Session = Depends(get_db)):
 # ─────────────────────────────────────────
 @router.get("/{driver_id}", response_model=DriverDetail)
 def get_driver_detail(driver_id: str, db: Session = Depends(get_db)):
-    trips = db.query(Trip).filter(Trip.driver_id == driver_id).all()
+    trips = db.query(Trip).filter(Trip.driver_id == driver_id).order_by(Trip.trip_start.desc()).all()
 
     if not trips:
         raise HTTPException(status_code=404, detail=f"Driver '{driver_id}' not found")
+
+    # Fetch driver name from Driver table in DB
+    driver_obj = db.query(Driver).filter(Driver.driver_id == driver_id).first()
+    driver_name = driver_obj.driver_name if (driver_obj and driver_obj.driver_name) else f"Driver {driver_id.replace('DR', '')}"
+
+    # Get vehicle type, vehicle_id, odometer, and engine hours from the latest trip
+    latest_trip = trips[0] if trips else None
+    vehicle_type = "Unknown"
+    vehicle_id = "N/A"
+    total_odometer = 0.0
+    engine_hours = 0.0
+    if latest_trip:
+        vehicle_id = latest_trip.vehicle_id or "N/A"
+        total_odometer = latest_trip.Total_Odometer or 0.0
+        engine_hours = latest_trip.engine_total_hour or 0.0
+        if hasattr(latest_trip, "vehicle_type") and latest_trip.vehicle_type:
+            vehicle_type = latest_trip.vehicle_type
+        elif latest_trip.vehicle and latest_trip.vehicle.vehicle_type:
+            vehicle_type = latest_trip.vehicle.vehicle_type
 
     total_trips    = len(trips)
     total_distance = sum(t.distance_km or 0.0 for t in trips)
@@ -163,6 +207,11 @@ def get_driver_detail(driver_id: str, db: Session = Depends(get_db)):
 
     return DriverDetail(
         driver_id=driver_id,
+        driver_name=driver_name,
+        vehicle_type=vehicle_type,
+        vehicle_id=vehicle_id,
+        total_odometer_km=total_odometer,
+        engine_total_hours=engine_hours,
         total_trips=total_trips,
         avg_score=avg_score,
         risk_level=get_risk_level(avg_score),
