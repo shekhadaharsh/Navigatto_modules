@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply h-full bg-slate-50 text-slate-800 antialiased font-sans;
+  }
+}
+
+/* Premium Scrollbars styling */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #e2e8f0;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #cbd5e1;
+}
+
+/* Custom visual utilities */
+.font-outfit {
+  font-family: 'Outfit', sans-serif;
+}
+
+/* Modern glassmorphism panel style */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+/* Pulse keyframes for glowing red warning rings */
+@keyframes ring-glow-red {
+  0%, 100% {
+    box-shadow: 0 0 0 0px rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+  }
+}
+
+.pulse-glow-red {
+  animation: ring-glow-red 2s infinite;
+}
+
+@keyframes ring-glow-green {
+  0%, 100% {
+    box-shadow: 0 0 0 0px rgba(16, 185, 129, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0);
+  }
+}
+
+.pulse-glow-green {
+  animation: ring-glow-green 2s infinite;
+}
