@@ -7,7 +7,7 @@ import random
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from database.db import SessionLocal, Base, engine
-from driver_module.model import Trip
+from driver_module.model import Trip, Driver, Vehicle
 
 def seed_data():
     db = SessionLocal()
@@ -28,6 +28,29 @@ def seed_data():
     vehicles = ["VH001", "VH002", "VH003", "VH004", "VH005"]
     vehicle_types = ["Mini Truck", "Medium Cargo", "Heavy Cargo Truck", "Pickup Truck", "Heavy Cargo Truck"]
     route_types = ["Highway", "City", "Mountain", "Rural", "Mixed"]
+
+    # Seed Drivers if they don't exist in the database
+    name_mapping = {
+        "DR001": "Alexander Sterling",
+        "DR002": "Marcus Vance",
+        "DR003": "Elena Rostova",
+        "DR004": "Devon Lane",
+        "DR005": "Ronald Richards",
+    }
+    for d_id in drivers:
+        driver_exists = db.query(Driver).filter(Driver.driver_id == d_id).first()
+        if not driver_exists:
+            name = name_mapping.get(d_id, f"Driver {d_id}")
+            db.add(Driver(driver_id=d_id, driver_name=name, is_active=True))
+
+    # Seed Vehicles if they don't exist in the database
+    for idx, v_id in enumerate(vehicles):
+        vehicle_exists = db.query(Vehicle).filter(Vehicle.id == v_id).first()
+        if not vehicle_exists:
+            v_type = vehicle_types[idx]
+            db.add(Vehicle(id=v_id, vehicle_name=f"Vehicle {v_id}", vehicle_type=v_type, is_active=True))
+    
+    db.commit()
 
     trip_count = 0
     now = datetime.now()
