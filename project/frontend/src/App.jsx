@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Compass, Search, Truck, Calendar, Clock, Navigation, MapPin, Gauge, 
   ShieldAlert, ShieldCheck, Droplet, Wrench, RefreshCw, AlertTriangle, 
-  AlertCircle, TrendingUp, TrendingDown, ArrowRight, User, Settings, 
+  AlertCircle, TrendingUp, TrendingDown, ArrowRight, ArrowLeft, User, Settings, 
   Info, CheckCircle2, XCircle, ChevronRight, Activity, Battery, Thermometer
 } from 'lucide-react';
 import {
@@ -305,6 +305,7 @@ export default function App() {
   const [journeys, setJourneys] = useState([]);
   const [activeJourneyId, setActiveJourneyId] = useState(null);
   const [journeyDetails, setJourneyDetails] = useState(null);
+  const [mobileViewTab, setMobileViewTab] = useState('drivers');
   
   // --- LOADERS / CONTROL ---
   const [searchTerm, setSearchTerm] = useState('');
@@ -544,7 +545,9 @@ export default function App() {
       <div className="flex-1 flex overflow-hidden">
         
         {/* -------------------- LEFT SIDEBAR (DRIVERS LIST) -------------------- */}
-        <aside className="w-80 border-r border-slate-200 bg-white flex flex-col shrink-0 z-10 shadow-sm">
+        <aside className={`w-full lg:w-64 xl:w-80 border-r border-slate-200 bg-white flex flex-col shrink-0 z-10 shadow-sm ${
+          mobileViewTab === 'drivers' ? 'flex' : 'hidden lg:flex'
+        }`}>
           {/* Search Box */}
           <div className="p-4 border-b border-slate-100 bg-slate-50/50 shrink-0">
             <div className="relative">
@@ -576,7 +579,10 @@ export default function App() {
                 return (
                   <button
                     key={d.driver_id}
-                    onClick={() => setActiveDriverId(d.driver_id)}
+                    onClick={() => {
+                      setActiveDriverId(d.driver_id);
+                      setMobileViewTab('journeys');
+                    }}
                     className={`w-full flex items-center gap-3.5 p-3 rounded-xl transition-all text-left relative ${
                       isActive 
                         ? 'bg-brand-50/60 border border-brand-100 shadow-sm' 
@@ -642,9 +648,20 @@ export default function App() {
           ) : (
             <>
               {/* -------------------- PANEL 1: DRIVER TRIPS (MIDDLE COLUMN) -------------------- */}
-              <section className="w-96 border-r border-slate-200 bg-white flex flex-col shrink-0 z-0">
+              <section className={`w-full lg:w-80 xl:w-96 border-r border-slate-200 bg-white flex flex-col shrink-0 z-0 ${
+                mobileViewTab === 'journeys' ? 'flex' : 'hidden lg:flex'
+              }`}>
             {/* Active Driver Profile Header */}
             <div className="p-5 border-b border-slate-100 bg-slate-50/20 shrink-0">
+              <div className="flex items-center gap-2 mb-3 lg:hidden">
+                <button
+                  onClick={() => setMobileViewTab('drivers')}
+                  className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors"
+                >
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+                <span className="text-xs font-bold text-slate-500">Back to Drivers</span>
+              </div>
               <div className="flex items-start gap-4">
                 <div 
                   className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-extrabold text-lg shadow-sm"
@@ -701,7 +718,10 @@ export default function App() {
                   return (
                     <button
                       key={j.journey_id}
-                      onClick={() => setActiveJourneyId(j.journey_id)}
+                      onClick={() => {
+                        setActiveJourneyId(j.journey_id);
+                        setMobileViewTab('details');
+                      }}
                       className={`w-full p-3 rounded-xl transition-all text-left border relative flex flex-col gap-2 ${
                         isActive 
                           ? 'bg-brand-50/30 border-brand-200 shadow-sm' 
@@ -754,7 +774,9 @@ export default function App() {
           </section>
 
           {/* -------------------- PANEL 2: DRILL-DOWN ANALYTICS (RIGHT WORKSPACE) -------------------- */}
-          <section className="flex-1 bg-slate-50 flex flex-col overflow-hidden relative">
+          <section className={`flex-1 bg-slate-50 flex flex-col overflow-hidden relative ${
+            mobileViewTab === 'details' ? 'flex' : 'hidden lg:flex'
+          }`}>
             
             {/* Loading Overlay */}
             {isLoadingDetails && (
@@ -767,6 +789,12 @@ export default function App() {
             {/* Empty state when no trip is selected */}
             {!journeyDetails ? (
               <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400">
+                <button
+                  onClick={() => setMobileViewTab('journeys')}
+                  className="lg:hidden mb-6 flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 shadow-sm"
+                >
+                  <ArrowLeft className="w-4 h-4" /> Back to Journeys
+                </button>
                 <div className="bg-white p-4 rounded-3xl shadow-premium border border-slate-100/50 mb-4 text-brand-500">
                   <Compass className="w-12 h-12" />
                 </div>
@@ -779,6 +807,12 @@ export default function App() {
                 {/* Trip Ribbon Header */}
                 <div className="p-4 bg-white border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-4 shrink-0 shadow-sm">
                   <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setMobileViewTab('journeys')}
+                      className="lg:hidden p-1.5 hover:bg-slate-100 rounded-xl text-slate-500 transition-colors shrink-0"
+                    >
+                      <ArrowLeft className="w-5 h-5" />
+                    </button>
                     <span className="text-xs font-black bg-brand-500 text-white px-2.5 py-1 rounded-xl shadow-brand-glow font-outfit tracking-wider">
                       TRIP {journeyDetails.journey.journey_id}
                     </span>
@@ -833,7 +867,7 @@ export default function App() {
                         </div>
 
                         {/* Circular Score Gauge & Layout */}
-                        <div className="flex items-center justify-around gap-6 mb-5">
+                        <div className="flex flex-col sm:flex-row xl:flex-col 2xl:flex-row items-center justify-around gap-6 mb-5">
                           {/* Circle Progress bar */}
                           <div className="relative w-28 h-28 shrink-0 flex items-center justify-center">
                             <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
@@ -870,22 +904,22 @@ export default function App() {
                           </div>
 
                           {/* Quick Stats on events */}
-                          <div className="flex-1 space-y-2.5 text-xs">
-                            <div className="flex items-center justify-between text-slate-600">
-                              <span className="font-semibold text-slate-500">Accelerations</span>
-                              <span className="font-bold text-slate-800">{journeyDetails.journey.acceleration_events} events</span>
+                          <div className="flex-1 min-w-0 space-y-2.5 text-xs w-full">
+                            <div className="flex items-center justify-between gap-2 text-slate-600">
+                              <span className="font-semibold text-slate-500 truncate">Accelerations</span>
+                              <span className="font-bold text-slate-800 shrink-0">{journeyDetails.journey.acceleration_events} events</span>
                             </div>
-                            <div className="flex items-center justify-between text-slate-600">
-                              <span className="font-semibold text-slate-500">Harsh Braking</span>
-                              <span className="font-bold text-slate-800">{journeyDetails.journey.brake_events} events</span>
+                            <div className="flex items-center justify-between gap-2 text-slate-600">
+                              <span className="font-semibold text-slate-500 truncate">Harsh Braking</span>
+                              <span className="font-bold text-slate-800 shrink-0">{journeyDetails.journey.brake_events} events</span>
                             </div>
-                            <div className="flex items-center justify-between text-slate-600">
-                              <span className="font-semibold text-slate-500">Overspeeding</span>
-                              <span className="font-bold text-slate-800">{journeyDetails.journey.overspeed_count} events</span>
+                            <div className="flex items-center justify-between gap-2 text-slate-600">
+                              <span className="font-semibold text-slate-500 truncate">Overspeeding</span>
+                              <span className="font-bold text-slate-800 shrink-0">{journeyDetails.journey.overspeed_count} events</span>
                             </div>
-                            <div className="flex items-center justify-between text-slate-600">
-                              <span className="font-semibold text-slate-500">Excessive Idling</span>
-                              <span className="font-bold text-slate-800">{(journeyDetails.journey.idle_time_min || 0).toFixed(1)} mins</span>
+                            <div className="flex items-center justify-between gap-2 text-slate-600">
+                              <span className="font-semibold text-slate-500 truncate">Excessive Idling</span>
+                              <span className="font-bold text-slate-800 shrink-0">{(journeyDetails.journey.idle_time_min || 0).toFixed(1)} mins</span>
                             </div>
                           </div>
                         </div>
@@ -939,19 +973,19 @@ export default function App() {
                         </div>
 
                         {/* Status pulsing bar */}
-                        <div className={`p-4 rounded-2xl flex items-center gap-4 mb-5 border transition-all ${
+                        <div className={`p-4 rounded-2xl flex flex-col sm:flex-row xl:flex-col 2xl:flex-row items-start sm:items-center xl:items-start 2xl:items-center gap-4 mb-5 border transition-all ${
                           journeyDetails.fuel_theft.detected
                             ? 'bg-rose-50/50 border-rose-200/50 pulse-glow-red'
                             : 'bg-emerald-50/50 border-emerald-200/50'
                         }`}>
-                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
                             journeyDetails.fuel_theft.detected ? 'bg-rose-500 text-white' : 'bg-emerald-500 text-white'
                           }`}>
                             {journeyDetails.fuel_theft.detected ? <ShieldAlert className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
                           </div>
-                          <div>
+                          <div className="flex-1 min-w-0">
                             <p className="text-xs text-slate-400 font-bold tracking-wide uppercase">Fuel Security Monitor</p>
-                            <p className="text-sm font-extrabold text-slate-800 font-outfit">
+                            <p className="text-sm font-extrabold text-slate-800 font-outfit break-words">
                               {journeyDetails.fuel_theft.detected 
                                 ? `Fuel theft event suspected (Confidence: ${journeyDetails.fuel_theft.confidence}%)`
                                 : "No suspicious fuel variations identified."
@@ -1056,7 +1090,7 @@ export default function App() {
                       </div>
 
                       {/* Model parameters explanation */}
-                      <div className="bg-slate-50 rounded-2xl border border-slate-200/50 p-4 mt-4 grid grid-cols-2 gap-3 text-[11px] font-semibold text-slate-500">
+                      <div className="bg-slate-50 rounded-2xl border border-slate-200/50 p-4 mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-3 text-[11px] font-semibold text-slate-500">
                         <div>
                           <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Route & Idle Adjustments</p>
                           <div className="space-y-1">
@@ -1105,7 +1139,7 @@ export default function App() {
                         </div>
 
                         {/* Sensory parameters diagnostics */}
-                        <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-4 mb-4">
                           <div className={`p-3 rounded-2xl border transition-all ${
                             journeyDetails.journey.external_voltage < 11.5 ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200/40'
                           }`}>
