@@ -234,6 +234,127 @@ const cleanTripDetails = (data) => {
   return data;
 };
 
+// --- COACHING INSIGHTS GENERATOR FOR FRONTEND ---
+const InsightIcon = ({ iconType, className }) => {
+  switch (iconType) {
+    case 'ShieldAlert':
+      return <ShieldAlert className={className} />;
+    case 'Gauge':
+      return <Gauge className={className} />;
+    case 'Clock':
+      return <Clock className={className} />;
+    case 'TrendingUp':
+      return <TrendingUp className={className} />;
+    case 'Compass':
+      return <Compass className={className} />;
+    default:
+      return <CheckCircle2 className={className} />;
+  }
+};
+
+const getDriverInsights = (details) => {
+  if (!details) return [];
+  const insights = [];
+  const score = details.driver_score?.score || 100;
+  
+  // 1. Check Speeding (highest severity priority)
+  const speedEvents = details.journey?.overspeed_count || 0;
+  const speedPenalty = Math.abs(details.driver_score?.breakdown?.overspeed || 0);
+  if (speedPenalty > 2 || speedEvents > 0) {
+    insights.push({
+      type: 'speeding',
+      text: 'Staying within speed limits improves fuel economy by up to 15% and ensures optimal driver safety ratings.',
+      icon: 'Gauge',
+      color: 'text-rose-600 bg-rose-50 border-rose-100',
+      chipLabel: '⚡ SAFETY RISK',
+      chipStyle: 'bg-rose-50 text-rose-700 border-rose-200/50',
+      estimate: 'Est. Impact: Prevent speeding alarms & reduce road risk',
+      penalty: speedPenalty || 5
+    });
+  }
+
+  // 2. Check Braking
+  const brakeEvents = details.journey?.brake_events || 0;
+  const brakePenalty = Math.abs(details.driver_score?.breakdown?.braking || 0);
+  if (brakePenalty > 2 || brakeEvents > 3) {
+    insights.push({
+      type: 'braking',
+      text: 'Maintain a 3-second safety gap to avoid harsh braking events, preserving brake pad life and passenger comfort.',
+      icon: 'ShieldAlert',
+      color: 'text-amber-600 bg-amber-50 border-amber-100',
+      chipLabel: '🔧 WEAR WARNING',
+      chipStyle: 'bg-amber-50 text-amber-700 border-amber-200/50',
+      estimate: 'Est. Impact: Extend brake pad lifecycle by 15-20%',
+      penalty: brakePenalty || 4
+    });
+  }
+  
+  // 3. Check Idling
+  const idleMin = details.journey?.idle_time_min || 0;
+  const idlePenalty = Math.abs(details.driver_score?.breakdown?.idle_time || 0);
+  if (idlePenalty > 2 || idleMin > 15) {
+    insights.push({
+      type: 'idling',
+      text: 'Turn off the engine during halts longer than 2 minutes to conserve fuel and minimize emissions.',
+      icon: 'Clock',
+      color: 'text-indigo-600 bg-indigo-50 border-indigo-100',
+      chipLabel: '🌱 ECO-DRIVING',
+      chipStyle: 'bg-indigo-50 text-indigo-700 border-indigo-200/50',
+      estimate: 'Est. Impact: Save ~0.8L fuel/hr during stops',
+      penalty: idlePenalty || 3
+    });
+  }
+
+  // 4. Check Acceleration
+  const accelEvents = details.journey?.acceleration_events || 0;
+  const accelPenalty = Math.abs(details.driver_score?.breakdown?.acceleration || 0);
+  if (accelPenalty > 2 || accelEvents > 3) {
+    insights.push({
+      type: 'accel',
+      text: 'Apply smooth, gradual acceleration inputs to enhance fuel economy and secure transported cargo.',
+      icon: 'TrendingUp',
+      color: 'text-orange-600 bg-orange-50 border-orange-100',
+      chipLabel: '🌱 ECO-DRIVING',
+      chipStyle: 'bg-orange-50 text-orange-700 border-orange-200/50',
+      estimate: 'Est. Impact: Save fuel and protect cargo suspension',
+      penalty: accelPenalty || 2
+    });
+  }
+
+  // 5. Check Cornering
+  const cornerEvents = details.journey?.cornering_events || 0;
+  const cornerPenalty = Math.abs(details.driver_score?.breakdown?.cornering || 0);
+  if (cornerPenalty > 2 || cornerEvents > 3) {
+    insights.push({
+      type: 'cornering',
+      text: 'Take wide, smooth turns at reduced speeds to control high lateral G-forces and vehicle roll.',
+      icon: 'Compass',
+      color: 'text-blue-600 bg-blue-50 border-blue-100',
+      chipLabel: '🔧 CARGO SECURITY',
+      chipStyle: 'bg-blue-50 text-blue-700 border-blue-200/50',
+      estimate: 'Est. Impact: Reduce lateral roll & stabilize load',
+      penalty: cornerPenalty || 1
+    });
+  }
+
+  // If no negative insights or excellent score
+  if (insights.length === 0 || score >= 92) {
+    return [{
+      type: 'perfect',
+      text: 'Perfect drive! Excellent speed control, minimal idling, and solid defensive handling throughout the journey.',
+      icon: 'CheckCircle2',
+      color: 'text-emerald-600 bg-emerald-50 border-emerald-100',
+      chipLabel: '🏆 CLASS LEADER',
+      chipStyle: 'bg-emerald-50 text-emerald-700 border-emerald-200/50',
+      estimate: 'Est. Impact: All systems operating at peak safety',
+      penalty: 0
+    }];
+  }
+
+  // Sort insights by penalty severity so that the biggest issue is shown first
+  return insights.sort((a, b) => b.penalty - a.penalty);
+};
+
 export default function App() {
   // --- UI STATES ---
   const [drivers, setDrivers] = useState([]);
@@ -808,93 +929,175 @@ export default function App() {
                         </div>
 
                         {/* Circular Score Gauge & Layout */}
-                        <div className="flex flex-col sm:flex-row xl:flex-col 2xl:flex-row items-center justify-around gap-6 mb-5">
+                        <div className="flex flex-col sm:flex-row xl:flex-col 2xl:flex-row items-center gap-8 mb-5 w-full">
                           {/* Circle Progress bar */}
-                          <div className="relative w-28 h-28 shrink-0 flex items-center justify-center">
+                          <div className="relative w-[130px] h-[130px] sm:ml-6 xl:ml-0 2xl:ml-6 shrink-0 flex items-center justify-center">
                             <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                              <defs>
+                                {/* Premium Gradients for Score classification */}
+                                <linearGradient id="scoreEmerald" x1="0%" y1="0%" x2="100%" y2="100%">
+                                  <stop offset="0%" stopColor="#10b981" />
+                                  <stop offset="100%" stopColor="#059669" />
+                                </linearGradient>
+                                <linearGradient id="scoreAmber" x1="0%" y1="0%" x2="100%" y2="100%">
+                                  <stop offset="0%" stopColor="#f59e0b" />
+                                  <stop offset="100%" stopColor="#d97706" />
+                                </linearGradient>
+                                <linearGradient id="scoreRose" x1="0%" y1="0%" x2="100%" y2="100%">
+                                  <stop offset="0%" stopColor="#f43f5e" />
+                                  <stop offset="100%" stopColor="#e11d48" />
+                                </linearGradient>
+                                
+                                {/* Glassmorphic concentric backgrounds */}
+                                <radialGradient id="innerCircleBg" cx="50%" cy="50%" r="50%">
+                                  <stop offset="0%" stopColor="#ffffff" stopOpacity="1" />
+                                  <stop offset="70%" stopColor="#f8fafc" stopOpacity="0.8" />
+                                  <stop offset="100%" stopColor="#e2e8f0" stopOpacity="0.3" />
+                                </radialGradient>
+                              </defs>
+                              
+                              {/* Telemetry Dial Outer Ring Accent */}
+                              <circle 
+                                className="text-slate-200/40" 
+                                strokeWidth="0.5" 
+                                strokeDasharray="2 3"
+                                stroke="currentColor" 
+                                fill="transparent" 
+                                r="46" 
+                                cx="50" 
+                                cy="50" 
+                              />
+                              
                               {/* Background track circle */}
                               <circle 
                                 className="text-slate-100" 
-                                strokeWidth="8" 
+                                strokeWidth="7" 
                                 stroke="currentColor" 
-                                fill="transparent" 
+                                fill="url(#innerCircleBg)" 
                                 r="40" 
                                 cx="50" 
                                 cy="50" 
                               />
+                              
                               {/* Colored indicator circle */}
                               <circle 
-                                className={`transition-all duration-1000 ${
-                                  journeyDetails.driver_score.score >= 80 ? 'text-emerald-500' : (journeyDetails.driver_score.score >= 60 ? 'text-amber-500' : 'text-rose-500')
-                                }`} 
-                                strokeWidth="8" 
+                                className="transition-all duration-1000" 
+                                strokeWidth="7" 
                                 strokeDasharray="251.2" 
                                 strokeDashoffset={251.2 - (251.2 * journeyDetails.driver_score.score) / 100} 
                                 strokeLinecap="round" 
-                                stroke="currentColor" 
+                                stroke={
+                                  journeyDetails.driver_score.score >= 80 
+                                    ? 'url(#scoreEmerald)' 
+                                    : (journeyDetails.driver_score.score >= 60 ? 'url(#scoreAmber)' : 'url(#scoreRose)')
+                                }
                                 fill="transparent" 
                                 r="40" 
                                 cx="50" 
                                 cy="50" 
                               />
                             </svg>
-                            <div className="absolute text-center">
-                              <span className="text-3xl font-black font-outfit text-slate-800 block leading-none">{journeyDetails.driver_score.score}</span>
-                              <span className="text-[10px] text-slate-400 font-bold uppercase mt-1">out of 100</span>
+                            <div className="absolute text-center flex flex-col items-center justify-center">
+                              <span className={`text-[38px] font-black font-outfit tracking-tight leading-none ${
+                                journeyDetails.driver_score.score >= 80 
+                                  ? 'text-emerald-600' 
+                                  : (journeyDetails.driver_score.score >= 60 ? 'text-amber-600' : 'text-rose-600')
+                              }`}>
+                                {journeyDetails.driver_score.score}
+                              </span>
+                              <span className="text-[8.5px] text-slate-400 font-extrabold uppercase mt-1 tracking-widest select-none">
+                                score
+                              </span>
                             </div>
                           </div>
 
                           {/* Quick Stats on events */}
-                          <div className="flex-1 min-w-0 space-y-2.5 text-xs w-full">
-                            <div className="flex items-center justify-between gap-2 text-slate-600">
-                              <span className="font-semibold text-slate-500 truncate">Accelerations</span>
-                              <span className="font-bold text-slate-800 shrink-0">{journeyDetails.journey.acceleration_events} events</span>
+                          <div className="w-full sm:w-auto sm:min-w-[230px] sm:max-w-[250px] xl:w-full xl:max-w-none 2xl:w-auto 2xl:min-w-[230px] 2xl:max-w-[250px] sm:ml-auto xl:ml-0 2xl:ml-auto space-y-1.5 text-[11px]">
+                            <div className="flex items-center justify-between gap-2 text-slate-600 p-1 hover:bg-slate-50 rounded-xl transition-all duration-200">
+                              <span className="font-bold text-slate-600 flex items-center gap-2 select-none shrink-0">
+                                <span className={`w-2 h-2 rounded-full shrink-0 ${
+                                  journeyDetails.journey.acceleration_events === 0 ? 'bg-emerald-500 shadow-sm shadow-emerald-400' : (journeyDetails.journey.acceleration_events < 4 ? 'bg-amber-500' : 'bg-rose-500')
+                                }`} />
+                                Accelerations
+                              </span>
+                              <span className="font-extrabold text-slate-700 shrink-0 bg-slate-100/80 px-2 py-0.5 rounded-lg text-[9.5px] font-outfit select-none">
+                                {journeyDetails.journey.acceleration_events} events
+                              </span>
                             </div>
-                            <div className="flex items-center justify-between gap-2 text-slate-600">
-                              <span className="font-semibold text-slate-500 truncate">Harsh Braking</span>
-                              <span className="font-bold text-slate-800 shrink-0">{journeyDetails.journey.brake_events} events</span>
+                            <div className="flex items-center justify-between gap-2 text-slate-600 p-1 hover:bg-slate-50 rounded-xl transition-all duration-200">
+                              <span className="font-bold text-slate-600 flex items-center gap-2 select-none shrink-0">
+                                <span className={`w-2 h-2 rounded-full shrink-0 ${
+                                  journeyDetails.journey.brake_events === 0 ? 'bg-emerald-500 shadow-sm shadow-emerald-400' : (journeyDetails.journey.brake_events < 4 ? 'bg-amber-500' : 'bg-rose-500')
+                                }`} />
+                                Harsh Braking
+                              </span>
+                              <span className="font-extrabold text-slate-700 shrink-0 bg-slate-100/80 px-2 py-0.5 rounded-lg text-[9.5px] font-outfit select-none">
+                                {journeyDetails.journey.brake_events} events
+                              </span>
                             </div>
-                            <div className="flex items-center justify-between gap-2 text-slate-600">
-                              <span className="font-semibold text-slate-500 truncate">Overspeeding</span>
-                              <span className="font-bold text-slate-800 shrink-0">{journeyDetails.journey.overspeed_count} events</span>
+                            <div className="flex items-center justify-between gap-2 text-slate-600 p-1 hover:bg-slate-50 rounded-xl transition-all duration-200">
+                              <span className="font-bold text-slate-600 flex items-center gap-2 select-none shrink-0">
+                                <span className={`w-2 h-2 rounded-full shrink-0 ${
+                                  journeyDetails.journey.overspeed_count === 0 ? 'bg-emerald-500 shadow-sm shadow-emerald-400' : (journeyDetails.journey.overspeed_count < 2 ? 'bg-amber-500' : 'bg-rose-500')
+                                }`} />
+                                Overspeeding
+                              </span>
+                              <span className="font-extrabold text-slate-700 shrink-0 bg-slate-100/80 px-2 py-0.5 rounded-lg text-[9.5px] font-outfit select-none">
+                                {journeyDetails.journey.overspeed_count} events
+                              </span>
                             </div>
-                            <div className="flex items-center justify-between gap-2 text-slate-600">
-                              <span className="font-semibold text-slate-500 truncate">Excessive Idling</span>
-                              <span className="font-bold text-slate-800 shrink-0">{(journeyDetails.journey.idle_time_min || 0).toFixed(1)} mins</span>
+                            <div className="flex items-center justify-between gap-2 text-slate-600 p-1 hover:bg-slate-50 rounded-xl transition-all duration-200">
+                              <span className="font-bold text-slate-600 flex items-center gap-2 select-none shrink-0">
+                                <span className={`w-2 h-2 rounded-full shrink-0 ${
+                                  (journeyDetails.journey.idle_time_min || 0) < 10 ? 'bg-emerald-500 shadow-sm shadow-emerald-400' : ((journeyDetails.journey.idle_time_min || 0) < 25 ? 'bg-amber-500' : 'bg-rose-500')
+                                }`} />
+                                Excessive Idling
+                              </span>
+                              <span className="font-extrabold text-slate-700 shrink-0 bg-slate-100/80 px-2 py-0.5 rounded-lg text-[9.5px] font-outfit select-none">
+                                {(journeyDetails.journey.idle_time_min || 0).toFixed(1)} mins
+                              </span>
                             </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Deductions Breakdown */}
-                      <div className="bg-slate-50 rounded-2xl border border-slate-200/50 p-4">
-                        <span className="text-[9px] text-slate-400 font-bold tracking-wide uppercase block mb-3">Model Safety Penalty Deductions</span>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 text-[11px] font-semibold text-slate-600">
-                          <div className="flex flex-col gap-1">
-                            <span className="text-slate-400">Accel Penalty</span>
-                            <span className="text-rose-600 font-extrabold font-outfit text-sm">{journeyDetails.driver_score.breakdown.acceleration} pts</span>
+                      {/* Telematics Coaching Insights */}
+                      {(() => {
+                        const insights = getDriverInsights(journeyDetails);
+                        const topInsight = insights[0] || {
+                          text: "Excellent defensive driving! All safety metrics are within optimal green thresholds.",
+                          icon: "CheckCircle2",
+                          color: "text-emerald-600 bg-emerald-50 border-emerald-100",
+                          chipLabel: "🏆 CLASS LEADER",
+                          chipStyle: "bg-emerald-50 text-emerald-700 border-emerald-200/50",
+                          estimate: "Est. Impact: All systems operating at peak safety"
+                        };
+                        return (
+                          <div className="bg-slate-50/70 rounded-2xl border border-slate-200/50 p-4 transition-all duration-300 hover:bg-slate-50/95 hover:-translate-y-0.5 hover:shadow-premium-sm">
+                            <div className="flex items-center justify-between gap-2 mb-3">
+                              <span className="text-[10px] font-extrabold tracking-wider uppercase bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 bg-clip-text text-transparent flex items-center gap-1.5 select-none">
+                                <Activity className="w-3.5 h-3.5 text-violet-500 animate-pulse" /> Telematics AI Coach
+                              </span>
+                              <span className={`text-[8px] font-extrabold px-2 py-0.5 rounded-full border tracking-wider select-none shrink-0 ${topInsight.chipStyle}`}>
+                                {topInsight.chipLabel}
+                              </span>
+                            </div>
+                            <div className="flex gap-3.5 items-start">
+                              <div className={`p-2.5 rounded-xl shrink-0 border ${topInsight.color} flex items-center justify-center shadow-sm`}>
+                                <InsightIcon iconType={topInsight.icon} className="w-5 h-5 animate-bounce-slow" />
+                              </div>
+                              <div className="flex flex-col gap-1 min-w-0">
+                                <div className="text-[11px] font-bold text-slate-700 leading-relaxed">
+                                  {topInsight.text}
+                                </div>
+                                <div className="text-[9.5px] font-bold text-slate-400 italic">
+                                  {topInsight.estimate}
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex flex-col gap-1">
-                            <span className="text-slate-400">Braking Penalty</span>
-                            <span className="text-rose-600 font-extrabold font-outfit text-sm">{journeyDetails.driver_score.breakdown.braking} pts</span>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <span className="text-slate-400">Speed Penalty</span>
-                            <span className="text-rose-600 font-extrabold font-outfit text-sm">{journeyDetails.driver_score.breakdown.overspeed} pts</span>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <span className="text-slate-400">Corner Penalty</span>
-                            <span className="text-rose-600 font-extrabold font-outfit text-sm">{journeyDetails.driver_score.breakdown.cornering} pts</span>
-                          </div>
-                          <div className="flex flex-col gap-1">
-                            <span className="text-slate-400">Idle Penalty</span>
-                            <span className="text-rose-600 font-extrabold font-outfit text-sm">{journeyDetails.driver_score.breakdown.idle_time} pts</span>
-                          </div>
-                          <div className="flex flex-col gap-1 justify-center">
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 border border-emerald-100 text-center w-full max-w-[80px]">Baseline: 100</span>
-                          </div>
-                        </div>
-                      </div>
+                        );
+                      })()}
                     </div>
 
                     {/* -------------------- CARD 2: FUEL THEFT CARD -------------------- */}
