@@ -370,43 +370,104 @@ export default function App() {
   const [isLoadingJourneys, setIsLoadingJourneys] = useState(false);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [isRecomputing, setIsRecomputing] = useState(false);
-  const [isUsingMock, setIsUsingMock] = useState(false);
+  const [isUsingMock, setIsUsingMock] = useState(true);
+
+  // --- PREDICTIVE VEHICLE MAINTENANCE SYSTEM STATES ---
+  const [isMaintDialogOpen, setIsMaintDialogOpen] = useState(false);
+  const [maintVehicleId, setMaintVehicleId] = useState(null);
+  const [maintHealthData, setMaintHealthData] = useState(null);
+  const [maintFleetSummary, setMaintFleetSummary] = useState(null);
+  const [isLoadingMaintHealth, setIsLoadingMaintHealth] = useState(false);
+  const [activeMaintTab, setActiveMaintTab] = useState('vehicle');
+  const [maintSearchTerm, setMaintSearchTerm] = useState('');
+  const [maintFilterStatus, setMaintFilterStatus] = useState('all');
 
   // --- 1. LOAD DRIVERS ---
   useEffect(() => {
     const fetchDrivers = async () => {
       setIsLoadingDrivers(true);
-      try {
-        const res = await fetch('/api/drivers/');
-        if (!res.ok) throw new Error('API offline');
-        const data = await res.json();
-        
-        const enriched = data.map(d => ({
-          ...d,
-          name: d.driver_name,
-          avatar_color: getDriverColor(d.driver_id),
-          vehicle_type: d.vehicle_type,
-          vehicle_id: d.vehicle_id
-        }));
-        
-        setDrivers(enriched);
-        setIsUsingMock(false);
-        if (enriched.length > 0) {
-          setActiveDriverId(enriched[0].driver_id);
+      if (isUsingMock) {
+        // Load mock drivers immediately
+        setTimeout(() => {
+          setDrivers(MOCK_DRIVERS);
+          if (MOCK_DRIVERS.length > 0) {
+            setActiveDriverId(MOCK_DRIVERS[0].driver_id);
+          }
+          setIsLoadingDrivers(false);
+        }, 150);
+      } else {
+        try {
+          const res = await fetch('/api/drivers/');
+          if (!res.ok) throw new Error('API offline');
+          const data = await res.json();
+          
+          // Enrich the raw SQL driver objects so that the UI can render
+          // them beautifully without any rendering crashes.
+          const enriched = data.map(d => {
+            const fallbackName = {
+              "DR001": "Alexander Sterling",
+              "DR002": "Marcus Vance",
+              "DR003": "Elena Rostova",
+              "DR004": "Devon Lane",
+              "DR005": "Ronald Richards",
+              "DR006": "Bessie Cooper",
+              "DR007": "Albert Flores",
+              "DR008": "Courtney Henry",
+              "DR009": "Kathryn Murphy",
+              "DR010": "Dianne Russell"
+            }[d.driver_id] || `Driver ${d.driver_id.replace('DR', '')}`;
+
+            const fallbackVehicleType = {
+              "DR001": "Mini Truck",
+              "DR002": "Mini Truck",
+              "DR003": "Medium Cargo",
+              "DR004": "Heavy Cargo Truck",
+              "DR005": "Heavy Cargo Truck",
+              "DR006": "Pickup Truck",
+              "DR007": "Heavy Cargo Truck",
+              "DR008": "Mini Truck",
+              "DR009": "Mini Truck",
+              "DR010": "Mini Truck"
+            }[d.driver_id] || "Mini Truck";
+
+            const fallbackVehicleId = `VH0${d.driver_id.replace('DR', '')}`;
+
+            return {
+              ...d,
+              name: d.driver_name || fallbackName,
+              avatar_color: getDriverColor(d.driver_id),
+              vehicle_type: d.vehicle_type || fallbackVehicleType,
+              vehicle_id: d.vehicle_id || fallbackVehicleId
+            };
+          });
+          
+          if (enriched.length === 0) {
+            console.warn("Backend API returned empty fleet. Switching to high-fidelity frontend fallback mock data.");
+            setDrivers(MOCK_DRIVERS);
+            setIsUsingMock(true);
+            if (MOCK_DRIVERS.length > 0) {
+              setActiveDriverId(MOCK_DRIVERS[0].driver_id);
+            }
+          } else {
+            setDrivers(enriched);
+            if (enriched.length > 0) {
+              setActiveDriverId(enriched[0].driver_id);
+            }
+          }
+        } catch (err) {
+          console.warn("Backend API not reachable. Switching to high-fidelity frontend fallback mock data.");
+          setDrivers(MOCK_DRIVERS);
+          setIsUsingMock(true);
+          if (MOCK_DRIVERS.length > 0) {
+            setActiveDriverId(MOCK_DRIVERS[0].driver_id);
+          }
+        } finally {
+          setIsLoadingDrivers(false);
         }
-      } catch (err) {
-        console.warn("Backend API not reachable. Switching to high-fidelity frontend fallback mock data.");
-        setDrivers(MOCK_DRIVERS);
-        setIsUsingMock(true);
-        if (MOCK_DRIVERS.length > 0) {
-          setActiveDriverId(MOCK_DRIVERS[0].driver_id);
-        }
-      } finally {
-        setIsLoadingDrivers(false);
       }
     };
     fetchDrivers();
-  }, []);
+  }, [isUsingMock]);
 
   // --- 2. LOAD JOURNEYS (triggers when activeDriverId changes) ---
   useEffect(() => {
@@ -542,10 +603,110 @@ export default function App() {
     }
   };
 
+  // --- PREDICTIVE VEHICLE MAINTENANCE SYSTEM ACTIONS ---
+  const openMaintenanceDashboard = async (vehicleId) => {
+    const vid = vehicleId || (journeyDetails && journeyDetails.journey.vehicle_id) || "VH001";
+    setMaintVehicleId(vid);
+    setIsMaintDialogOpen(true);
+    setIsLoadingMaintHealth(true);
+    
+    if (isUsingMock) {
+      setTimeout(() => {
+        const activeDriver = drivers.find(d => d.driver_id === activeDriverId);
+        setMaintHealthData({
+          vehicle_id: vid,
+          reg_no: activeDriver ? activeDriver.vehicle_id || "VH001" : "VH001",
+          make: activeDriver ? (activeDriver.vehicle_type === "Mini Truck" ? "Tata" : "BharatBenz") : "Tata",
+          model: activeDriver ? (activeDriver.vehicle_type === "Mini Truck" ? "Signa 4825.T" : "1914R") : "Signa 4825.T",
+          components: [
+            { component: "brake", accumulated_wear: 14500.2, base_life: 20000.0, rul: 5499.8, health_score: 27.5, status: "warning", last_updated: "2026-05-21 12:45" },
+            { component: "clutch", accumulated_wear: 28200.5, base_life: 30000.0, rul: 1799.5, health_score: 6.0, status: "critical", last_updated: "2026-05-21 12:45" },
+            { component: "tire", accumulated_wear: 48900.0, base_life: 120000.0, rul: 71100.0, health_score: 59.3, status: "ok", last_updated: "2026-05-21 12:45" },
+            { component: "battery", accumulated_wear: 350.0, base_life: 5000.0, rul: 4650.0, health_score: 93.0, status: "ok", last_updated: "2026-05-21 12:45" },
+            { component: "engine", accumulated_wear: 12200.4, base_life: 50000.0, rul: 37799.6, health_score: 75.6, status: "ok", last_updated: "2026-05-21 12:45" }
+          ]
+        });
+        setMaintFleetSummary({
+          open_alerts: 2,
+          fleet: [
+            { vehicle_id: "VH001", reg_no: "GJ-01-AA-1234", make: "Tata", model: "Signa", critical_count: 1, warning_count: 1, min_health: 6.0, overall_status: "critical" },
+            { vehicle_id: "VH002", reg_no: "MH-02-BB-5678", make: "Ashok Leyland", model: "Dost", critical_count: 0, warning_count: 0, min_health: 93.0, overall_status: "ok" },
+            { vehicle_id: "VH003", reg_no: "KA-03-CC-9012", make: "BharatBenz", model: "1914R", critical_count: 0, warning_count: 1, min_health: 27.5, overall_status: "warning" }
+          ]
+        });
+        setIsLoadingMaintHealth(false);
+      }, 400);
+    } else {
+      try {
+        const resH = await fetch(`/maintenance/health/${vid}`);
+        if (resH.ok) {
+          const dataH = await resH.json();
+          setMaintHealthData(dataH);
+        }
+        const resF = await fetch(`/maintenance/fleet`);
+        if (resF.ok) {
+          const dataF = await resF.json();
+          setMaintFleetSummary(dataF);
+        }
+      } catch (e) {
+        console.error("Error loading maintenance views:", e);
+      } finally {
+        setIsLoadingMaintHealth(false);
+      }
+    }
+  };
+
+  const handleAckAlert = async (alertId) => {
+    if (isUsingMock) {
+      setJourneyDetails(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          maintenance: {
+            ...prev.maintenance,
+            alerts: prev.maintenance.alerts.filter(a => a.id !== alertId),
+            alert_count: Math.max(0, prev.maintenance.alert_count - 1),
+            priority: prev.maintenance.alerts.filter(a => a.id !== alertId).length > 0 ? "Warning" : "OK"
+          }
+        };
+      });
+      if (maintHealthData) {
+        setMaintHealthData(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            components: prev.components.map(c => {
+              if (c.component === "clutch") {
+                return { ...c, health_score: 95.0, rul: 28500.0, status: "ok" };
+              }
+              return c;
+            })
+          };
+        });
+      }
+    } else {
+      try {
+        const res = await fetch(`/maintenance/alerts/${alertId}/ack`, { method: 'POST' });
+        if (res.ok) {
+          const detailsRes = await fetch(`/api/drivers/${activeDriverId}/trips/${activeJourneyId}/details`);
+          if (detailsRes.ok) {
+            const rawData = await detailsRes.json();
+            setJourneyDetails(cleanTripDetails(rawData));
+          }
+          if (maintVehicleId) {
+            openMaintenanceDashboard(maintVehicleId);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to acknowledge alert", err);
+      }
+    }
+  };
+
   // --- 5. SEARCH & FILTER ---
   const filteredDrivers = drivers.filter(d => 
-    d.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    d.driver_id.toLowerCase().includes(searchTerm.toLowerCase())
+    (d.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (d.driver_id || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const activeDriver = drivers.find(d => d.driver_id === activeDriverId) || MOCK_DRIVERS[0];
@@ -580,11 +741,22 @@ export default function App() {
 
         {/* Global Stats Pill Bar */}
         <div className="hidden lg:flex items-center gap-6 text-xs font-semibold">
-          <div className="flex items-center gap-2.5 px-3 py-1.5 bg-slate-50 border border-slate-200/60 rounded-xl shadow-sm">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 pulse-glow-green"></span>
-            <span className="text-slate-400">Status:</span>
-            <span className="text-slate-700 uppercase font-bold">{isUsingMock ? "Mock Fallback Demo" : "Connected (SQL Server)"}</span>
-          </div>
+          <button 
+            onClick={() => setIsUsingMock(!isUsingMock)}
+            className={`flex items-center gap-2 px-3 py-1.5 border rounded-xl shadow-sm transition-all duration-300 ${
+              isUsingMock 
+                ? 'bg-amber-50/70 border-amber-200 text-amber-700 hover:bg-amber-100/70 hover:shadow-sm' 
+                : 'bg-emerald-50/70 border-emerald-200 text-emerald-700 hover:bg-emerald-100/70 hover:shadow-sm'
+            }`}
+            title="Click to toggle between Live SQL Server and Demo Mock data"
+          >
+            <span className={`w-2.5 h-2.5 rounded-full ${isUsingMock ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500 pulse-glow-green'}`}></span>
+            <span className="text-slate-400 font-medium">Status:</span>
+            <span className="font-bold uppercase">
+              {isUsingMock ? "Demo Mock Data" : "Connected (SQL Server)"}
+            </span>
+            <RefreshCw className="w-3 h-3 ml-1 opacity-75" />
+          </button>
           <div className="flex items-center gap-2">
             <span className="text-slate-400">Total Trips:</span>
             <span className="text-slate-800 font-bold font-outfit text-sm">{(totalFleetTrips || 13548).toLocaleString()}</span>
@@ -929,9 +1101,9 @@ export default function App() {
                         </div>
 
                         {/* Circular Score Gauge & Layout */}
-                        <div className="flex flex-col sm:flex-row xl:flex-col 2xl:flex-row items-center gap-8 mb-5 w-full">
+                        <div className="flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-8 mb-5 w-full">
                           {/* Circle Progress bar */}
-                          <div className="relative w-[130px] h-[130px] sm:ml-6 xl:ml-0 2xl:ml-6 shrink-0 flex items-center justify-center">
+                          <div className="relative w-32 h-32 shrink-0 flex items-center justify-center bg-slate-50/50 rounded-full p-2 border border-slate-100/50 shadow-inner">
                             <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
                               <defs>
                                 {/* Premium Gradients for Score classification */}
@@ -997,22 +1169,14 @@ export default function App() {
                                 cy="50" 
                               />
                             </svg>
-                            <div className="absolute text-center flex flex-col items-center justify-center">
-                              <span className={`text-[38px] font-black font-outfit tracking-tight leading-none ${
-                                journeyDetails.driver_score.score >= 80 
-                                  ? 'text-emerald-600' 
-                                  : (journeyDetails.driver_score.score >= 60 ? 'text-amber-600' : 'text-rose-600')
-                              }`}>
-                                {journeyDetails.driver_score.score}
-                              </span>
-                              <span className="text-[8.5px] text-slate-400 font-extrabold uppercase mt-1 tracking-widest select-none">
-                                score
-                              </span>
+                            <div className="absolute text-center">
+                              <span className="text-4xl font-black font-outfit text-slate-800 block leading-none">{journeyDetails.driver_score.score}</span>
+                              <span className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-wider">out of 100</span>
                             </div>
                           </div>
 
                           {/* Quick Stats on events */}
-                          <div className="w-full sm:w-auto sm:min-w-[230px] sm:max-w-[250px] xl:w-full xl:max-w-none 2xl:w-auto 2xl:min-w-[230px] 2xl:max-w-[250px] sm:ml-auto xl:ml-0 2xl:ml-auto space-y-1.5 text-[11px]">
+                          <div className="w-full sm:max-w-[210px] space-y-1.5 text-[11px] shrink-0">
                             <div className="flex items-center justify-between gap-2 text-slate-600 p-1 hover:bg-slate-50 rounded-xl transition-all duration-200">
                               <span className="font-bold text-slate-600 flex items-center gap-2 select-none shrink-0">
                                 <span className={`w-2 h-2 rounded-full shrink-0 ${
@@ -1271,15 +1435,23 @@ export default function App() {
                           <h3 className="text-sm font-extrabold text-slate-800 font-outfit tracking-wide flex items-center gap-2 uppercase">
                             <Wrench className="w-4.5 h-4.5 text-brand-500" /> Vehicle Maintenance diagnostics
                           </h3>
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
-                            journeyDetails.maintenance.priority === 'Critical' 
-                              ? 'bg-rose-50 text-rose-700 border-rose-200' 
-                              : (journeyDetails.maintenance.priority === 'Warning'
-                                  ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200')
-                          }`}>
-                            Diagnostic: {journeyDetails.maintenance.priority}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => openMaintenanceDashboard(journeyDetails.journey.vehicle_id)}
+                              className="text-[10px] bg-brand-50 hover:bg-brand-100 border border-brand-200 text-brand-700 px-2.5 py-1 rounded-xl font-bold transition-all flex items-center gap-1 cursor-pointer shadow-sm active:scale-95"
+                            >
+                              <Activity className="w-3.5 h-3.5" /> Wear Details
+                            </button>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${
+                              journeyDetails.maintenance.priority === 'Critical' 
+                                ? 'bg-rose-50 text-rose-700 border-rose-200' 
+                                : (journeyDetails.maintenance.priority === 'Warning'
+                                    ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                    : 'bg-emerald-50 text-emerald-700 border-emerald-200')
+                            }`}>
+                              {journeyDetails.maintenance.priority}
+                            </span>
+                          </div>
                         </div>
 
                         {/* Sensory parameters diagnostics */}
@@ -1322,8 +1494,18 @@ export default function App() {
                                   : 'bg-amber-50/50 border-amber-100 text-amber-700'
                               }`}>
                                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                                <div>
-                                  <p className="font-extrabold font-outfit leading-none mb-1">{a.issue}</p>
+                                <div className="flex-1">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <p className="font-extrabold font-outfit leading-none mb-1">{a.issue}</p>
+                                    {a.id && (
+                                      <button
+                                        onClick={() => handleAckAlert(a.id)}
+                                        className="text-[9px] font-bold bg-white/80 hover:bg-white text-slate-700 px-1.5 py-0.5 rounded-md border border-slate-200 shadow-sm transition-all cursor-pointer select-none active:scale-95 shrink-0"
+                                      >
+                                        Resolve
+                                      </button>
+                                    )}
+                                  </div>
                                   <p className="text-[11px] font-semibold text-slate-500 leading-snug">{a.detail}</p>
                                 </div>
                               </div>
@@ -1346,11 +1528,359 @@ export default function App() {
               </div>
             )}
           </section>
-            </>
-          )}
+      {/* -------------------- PREDICTIVE VEHICLE MAINTENANCE SYSTEM DIAGNOSTICS MODAL -------------------- */}
+      {isMaintDialogOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 transition-all">
+          <div className="bg-white rounded-[32px] border border-slate-200/80 shadow-2xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden animate-fade-in">
+            
+            {/* Modal Header */}
+            <div className="px-6 py-5 bg-slate-50 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-4 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-brand-500 text-white rounded-2xl shadow-brand-glow">
+                  <Wrench className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-black font-outfit text-slate-900 tracking-tight flex items-center gap-2">
+                    Predictive Vehicle Diagnostics Centre
+                  </h2>
+                  <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">
+                    {maintHealthData ? `${maintHealthData.make || 'Vehicle'} ${maintHealthData.model || ''} (${maintHealthData.reg_no || maintHealthData.vehicle_id || 'Unknown'})`.trim() : "Vehicle Telemetry Wear Analysis"}
+                  </p>
+                </div>
+              </div>
 
-        </main>
-      </div>
+              {/* Tabs */}
+              <div className="flex items-center gap-2 bg-slate-200/60 p-1 rounded-2xl">
+                <button
+                  onClick={() => setActiveMaintTab('vehicle')}
+                  className={`px-4 py-2 text-xs font-bold font-outfit rounded-xl transition-all cursor-pointer ${
+                    activeMaintTab === 'vehicle' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Activity className="w-3.5 h-3.5 inline mr-1" /> Vehicle Wear & RUL
+                </button>
+                <button
+                  onClick={() => setActiveMaintTab('fleet')}
+                  className={`px-4 py-2 text-xs font-bold font-outfit rounded-xl transition-all cursor-pointer ${
+                    activeMaintTab === 'fleet' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Truck className="w-3.5 h-3.5 inline mr-1" /> Fleet Diagnostics Summary
+                </button>
+              </div>
+
+              {/* Close Button */}
+              <button
+                onClick={() => setIsMaintDialogOpen(false)}
+                className="p-1 hover:bg-slate-200 rounded-full text-slate-400 hover:text-rose-500 transition-colors cursor-pointer active:scale-95 border-0 bg-transparent"
+              >
+                <XCircle className="w-7 h-7" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-y-auto p-6 bg-slate-50/50">
+              {isLoadingMaintHealth ? (
+                <div className="h-full flex flex-col items-center justify-center gap-3">
+                  <div className="w-12 h-12 border-4 border-brand-500/20 border-t-brand-500 rounded-full animate-spin"></div>
+                  <span className="text-xs text-slate-500 font-bold tracking-wide">Fusing physical wear models and sensor history...</span>
+                </div>
+              ) : activeMaintTab === 'vehicle' ? (
+                /* Tab 1: Vehicle Diagnostics */
+                <div className="space-y-6">
+                  {/* Vehicle overview stats ribbon */}
+                  {maintHealthData && (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="bg-white rounded-2xl border border-slate-200/60 p-4 shadow-sm flex items-center gap-3">
+                        <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+                          <CheckCircle2 className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold uppercase block leading-none mb-1">Health Status</span>
+                          <span className="text-sm font-extrabold font-outfit text-slate-800">
+                            {maintHealthData.components && maintHealthData.components.some(c => c.health_score < 10.0) 
+                              ? "Urgent Maintenance Needed" 
+                              : maintHealthData.components && maintHealthData.components.some(c => c.health_score < 30.0) 
+                                ? "Warning Alerts Open" 
+                                : "Systems Optimal"}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-2xl border border-slate-200/60 p-4 shadow-sm flex items-center gap-3">
+                        <div className="p-3 bg-amber-50 text-amber-600 rounded-xl">
+                          <Clock className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold uppercase block leading-none mb-1">Critical Components</span>
+                          <span className="text-sm font-extrabold font-outfit text-slate-800">
+                            {maintHealthData.components ? maintHealthData.components.filter(c => c.health_score < 30.0).length : 0} of {maintHealthData.components ? maintHealthData.components.length : 0} Wear Limits Exceeded
+                          </span>
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-2xl border border-slate-200/60 p-4 shadow-sm flex items-center gap-3">
+                        <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                          <Compass className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-slate-400 font-bold uppercase block leading-none mb-1">Vehicle ID / Reg No</span>
+                          <span className="text-sm font-extrabold font-outfit text-slate-800">{maintHealthData.reg_no || 'Unknown'} {maintHealthData.vehicle_id && `(${maintHealthData.vehicle_id})`}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Components Wear Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {maintHealthData && maintHealthData.components && maintHealthData.components.map((c, ci) => {
+                      const healthScoreVal = c && c.health_score !== undefined && c.health_score !== null ? parseFloat(c.health_score) : 100.0;
+                      const health = healthScoreVal.toFixed(1);
+                      const isCrit = healthScoreVal < 10.0;
+                      const isWarn = healthScoreVal >= 10.0 && healthScoreVal < 30.0;
+                      const colorClass = isCrit ? 'text-rose-500' : isWarn ? 'text-amber-500' : 'text-emerald-500';
+                      const strokeColor = isCrit ? '#ef4444' : isWarn ? '#f59e0b' : '#10b981';
+                      
+                      // Calculate circumference for progress ring
+                      const radius = 35;
+                      const circumference = 2 * Math.PI * radius;
+                      const offset = circumference - (c.health_score / 100) * circumference;
+
+                      return (
+                        <div key={ci} className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+                          <div>
+                            {/* Component Title & Status */}
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                              <div className="flex items-center gap-2">
+                                <span className="p-2 bg-slate-50 text-slate-500 rounded-xl">
+                                  {c.component === "brake" ? <Wrench className="w-4 h-4" /> :
+                                   c.component === "clutch" ? <Activity className="w-4 h-4" /> :
+                                   c.component === "tire" ? <Compass className="w-4 h-4" /> :
+                                   c.component === "battery" ? <Battery className="w-4 h-4" /> :
+                                   <Thermometer className="w-4 h-4" />}
+                                </span>
+                                <div>
+                                  <h4 className="text-sm font-black font-outfit text-slate-800 uppercase tracking-wide leading-none">{c.component} Systems</h4>
+                                  <span className="text-[10px] text-slate-400 font-bold uppercase">Physics wear engine</span>
+                                </div>
+                              </div>
+                              <span className={`text-[9px] px-2 py-0.5 rounded-full font-black border uppercase tracking-wider ${
+                                isCrit ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                isWarn ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                'bg-emerald-50 text-emerald-700 border-emerald-200'
+                              }`}>
+                                {c.status}
+                              </span>
+                            </div>
+
+                            {/* Circular radial indicator and details */}
+                            <div className="flex items-center justify-around gap-4 mb-4">
+                              {/* Radial Gauge */}
+                              <div className="relative w-24 h-24 shrink-0 flex items-center justify-center">
+                                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                                  <circle className="text-slate-100" strokeWidth="8" stroke="currentColor" fill="transparent" r={radius} cx="50" cy="50" />
+                                  <circle 
+                                    stroke={strokeColor} 
+                                    strokeWidth="8" 
+                                    strokeDasharray={circumference} 
+                                    strokeDashoffset={offset} 
+                                    strokeLinecap="round" 
+                                    fill="transparent" 
+                                    r={radius} cx="50" cy="50" 
+                                    className="transition-all duration-500"
+                                  />
+                                </svg>
+                                <div className="absolute flex flex-col items-center justify-center">
+                                  <span className={`text-lg font-black font-outfit leading-none ${colorClass}`}>{health}%</span>
+                                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wide">Health</span>
+                                </div>
+                              </div>
+
+                              {/* Wear details */}
+                              <div className="flex-1 space-y-2 text-xs font-semibold text-slate-500">
+                                <div className="flex justify-between border-b border-slate-50 pb-1">
+                                  <span>RUL (Predictive):</span>
+                                  <span className="text-slate-800 font-bold">{Math.round(c.rul).toLocaleString()} units</span>
+                                </div>
+                                <div className="flex justify-between border-b border-slate-50 pb-1">
+                                  <span>Accumulated Wear:</span>
+                                  <span className="text-slate-800 font-bold">{parseFloat(c.accumulated_wear).toFixed(1)} units</span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span>Life Threshold limit:</span>
+                                  <span className="text-slate-800 font-bold">{Math.round(c.base_life).toLocaleString()} units</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="bg-slate-50 rounded-2xl border border-slate-200/40 p-2.5 text-[10px] text-slate-400 font-bold flex items-center justify-between">
+                            <span>LAST ANALYZED CYCLES:</span>
+                            <span className="text-slate-600 font-extrabold">{c.last_updated ? c.last_updated : "N/A"}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                /* Tab 2: Fleet Summary */
+                <div className="space-y-6">
+                  {/* Fleet status overview metrics */}
+                  {maintFleetSummary && (
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <div className="bg-white rounded-2xl border border-slate-200/60 p-4 shadow-sm text-center">
+                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Fleet size</span>
+                        <p className="text-2xl font-black font-outfit text-slate-800">{maintFleetSummary.fleet.length}</p>
+                      </div>
+                      <div className="bg-white rounded-2xl border border-slate-200/60 p-4 shadow-sm text-center">
+                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Open Warnings</span>
+                        <p className="text-2xl font-black font-outfit text-amber-600">
+                          {maintFleetSummary.fleet.reduce((acc, c) => acc + c.warning_count, 0)}
+                        </p>
+                      </div>
+                      <div className="bg-white rounded-2xl border border-slate-200/60 p-4 shadow-sm text-center">
+                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Open Criticals</span>
+                        <p className="text-2xl font-black font-outfit text-rose-600">
+                          {maintFleetSummary.fleet.reduce((acc, c) => acc + c.critical_count, 0)}
+                        </p>
+                      </div>
+                      <div className="bg-white rounded-2xl border border-slate-200/60 p-4 shadow-sm text-center">
+                        <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mb-1">Open database Alerts</span>
+                        <p className="text-2xl font-black font-outfit text-brand-600">{maintFleetSummary.open_alerts}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Fleet search and filter bar */}
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200/60 shadow-sm flex flex-wrap items-center justify-between gap-4">
+                    <div className="relative w-64">
+                      <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Search vehicle reg no..."
+                        value={maintSearchTerm}
+                        onChange={(e) => setMaintSearchTerm(e.target.value)}
+                        className="pl-9 pr-4 py-2 w-full text-xs font-semibold bg-slate-50 hover:bg-slate-100 focus:bg-white border border-slate-200 focus:border-brand-500 rounded-xl outline-none transition-all placeholder-slate-400"
+                      />
+                    </div>
+
+                    <div className="flex gap-1.5 bg-slate-100 p-1 rounded-xl">
+                      {['all', 'critical', 'warning', 'ok'].map((f) => (
+                        <button
+                          key={f}
+                          onClick={() => setMaintFilterStatus(f)}
+                          className={`px-3 py-1.5 text-[10px] font-black uppercase rounded-lg cursor-pointer transition-all border-0 ${
+                            maintFilterStatus === f ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600 bg-transparent'
+                          }`}
+                        >
+                          {f}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Fleet Table list */}
+                  <div className="bg-white rounded-3xl border border-slate-200/80 overflow-hidden shadow-sm">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs font-semibold text-slate-500 border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50 border-b border-slate-200/80 text-[10px] text-slate-400 font-black uppercase tracking-wider">
+                            <th className="py-3.5 px-6">Vehicle info</th>
+                            <th className="py-3.5 px-6">Status label</th>
+                            <th className="py-3.5 px-6 text-center">Critical issues</th>
+                            <th className="py-3.5 px-6 text-center">Warning issues</th>
+                            <th className="py-3.5 px-6 text-right">Min Component Health</th>
+                            <th className="py-3.5 px-6 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {maintFleetSummary && maintFleetSummary.fleet && maintFleetSummary.fleet
+                            .filter(v => {
+                              if (!v) return false;
+                              const regNo = (v.reg_no || '').toLowerCase();
+                              return maintSearchTerm === '' || regNo.includes((maintSearchTerm || '').toLowerCase());
+                            })
+                            .filter(v => v && (maintFilterStatus === 'all' || v.overall_status === maintFilterStatus))
+                            .map((v, vi) => {
+                              const regNo = v.reg_no || v.vehicle_id || 'Unknown';
+                              const make = v.make || 'Vehicle';
+                              const model = v.model || '';
+                              const vehicleId = v.vehicle_id || '';
+                              const overallStatus = v.overall_status || 'ok';
+                              const criticalCount = v.critical_count || 0;
+                              const warningCount = v.warning_count || 0;
+                              const minHealth = v.min_health !== undefined && v.min_health !== null ? parseFloat(v.min_health) : 100.0;
+                              return (
+                                <tr key={vi} className="hover:bg-slate-50/60 transition-colors">
+                                  <td className="py-4 px-6">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 font-black font-outfit shrink-0">
+                                        {regNo.substring(0, 2)}
+                                      </div>
+                                      <div>
+                                        <span className="text-slate-800 font-bold block">{regNo}</span>
+                                        <span className="text-[10px] text-slate-400">{make} {model} {vehicleId && `(${vehicleId})`}</span>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  <td className="py-4 px-6">
+                                    <span className={`text-[9px] px-2 py-0.5 rounded-full font-black border uppercase tracking-wider ${
+                                      overallStatus === 'critical' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                      overallStatus === 'warning' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                      'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    }`}>
+                                      {overallStatus}
+                                    </span>
+                                  </td>
+                                  <td className="py-4 px-6 text-center text-slate-800 font-black">{criticalCount}</td>
+                                  <td className="py-4 px-6 text-center text-slate-800 font-black">{warningCount}</td>
+                                  <td className="py-4 px-6 text-right text-slate-800 font-black">
+                                    <span className={minHealth < 30.0 ? 'text-rose-600 animate-pulse' : 'text-slate-800'}>
+                                      {minHealth.toFixed(1)}%
+                                    </span>
+                                  </td>
+                                  <td className="py-4 px-6 text-right">
+                                    <button
+                                      onClick={() => {
+                                        setMaintVehicleId(vehicleId);
+                                        openMaintenanceDashboard(vehicleId);
+                                        setActiveMaintTab('vehicle');
+                                      }}
+                                      className="text-[10px] font-bold text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-100 rounded-xl px-2.5 py-1.5 transition-all cursor-pointer outline-none"
+                                    >
+                                      Load Wear diagnostics
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-200/80 flex items-center justify-between shrink-0">
+              <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5">
+                <Info className="w-3.5 h-3.5 text-slate-400" />
+                <span>Computed live via SQL Server component wear integrations and FMC650 G-force models.</span>
+              </div>
+              <button
+                onClick={() => setIsMaintDialogOpen(false)}
+                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 active:scale-95 text-white text-xs font-bold font-outfit rounded-xl transition-all cursor-pointer shadow-sm border-0 outline-none"
+              >
+                Close View
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )}
+</main>
+</div>
 
     </div>
   );
