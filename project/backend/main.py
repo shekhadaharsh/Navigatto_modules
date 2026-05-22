@@ -13,7 +13,7 @@ from database.db import Base, engine
 # ── Import Routers ──
 from driver_module.routes import router as driver_router
 # from fuel_module.routes import router as fuel_router          # Person 2
-# from maintenance_module.routes import router as maint_router  # Person 3
+from maintenance_module.routes import router as maint_router
 
 # ─────────────────────────────────────────
 # Create DB tables on startup
@@ -49,7 +49,7 @@ app.add_middleware(
 # ─────────────────────────────────────────
 app.include_router(driver_router)
 # app.include_router(fuel_router)       # uncomment when Person 2 is ready
-# app.include_router(maint_router)      # uncomment when Person 3 is ready
+app.include_router(maint_router)
 
 
 # ─────────────────────────────────────────
