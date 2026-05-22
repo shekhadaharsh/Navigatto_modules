@@ -1119,26 +1119,64 @@ export default function App() {
                           {/* Circle Progress bar */}
                           <div className="relative w-32 h-32 shrink-0 flex items-center justify-center bg-slate-50/50 rounded-full p-2 border border-slate-100/50 shadow-inner">
                             <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                              <defs>
+                                {/* Premium Gradients for Score classification */}
+                                <linearGradient id="scoreEmerald" x1="0%" y1="0%" x2="100%" y2="100%">
+                                  <stop offset="0%" stopColor="#10b981" />
+                                  <stop offset="100%" stopColor="#059669" />
+                                </linearGradient>
+                                <linearGradient id="scoreAmber" x1="0%" y1="0%" x2="100%" y2="100%">
+                                  <stop offset="0%" stopColor="#f59e0b" />
+                                  <stop offset="100%" stopColor="#d97706" />
+                                </linearGradient>
+                                <linearGradient id="scoreRose" x1="0%" y1="0%" x2="100%" y2="100%">
+                                  <stop offset="0%" stopColor="#f43f5e" />
+                                  <stop offset="100%" stopColor="#e11d48" />
+                                </linearGradient>
+                                
+                                {/* Glassmorphic concentric backgrounds */}
+                                <radialGradient id="innerCircleBg" cx="50%" cy="50%" r="50%">
+                                  <stop offset="0%" stopColor="#ffffff" stopOpacity="1" />
+                                  <stop offset="70%" stopColor="#f8fafc" stopOpacity="0.8" />
+                                  <stop offset="100%" stopColor="#e2e8f0" stopOpacity="0.3" />
+                                </radialGradient>
+                              </defs>
+                              
+                              {/* Telemetry Dial Outer Ring Accent */}
+                              <circle 
+                                className="text-slate-200/40" 
+                                strokeWidth="0.5" 
+                                strokeDasharray="2 3"
+                                stroke="currentColor" 
+                                fill="transparent" 
+                                r="46" 
+                                cx="50" 
+                                cy="50" 
+                              />
+                              
                               {/* Background track circle */}
                               <circle 
                                 className="text-slate-100" 
-                                strokeWidth="8" 
+                                strokeWidth="7" 
                                 stroke="currentColor" 
-                                fill="transparent" 
+                                fill="url(#innerCircleBg)" 
                                 r="40" 
                                 cx="50" 
                                 cy="50" 
                               />
+                              
                               {/* Colored indicator circle */}
                               <circle 
-                                className={`transition-all duration-1000 ${
-                                  journeyDetails.driver_score.score >= 80 ? 'text-emerald-500' : (journeyDetails.driver_score.score >= 60 ? 'text-amber-500' : 'text-rose-500')
-                                }`} 
-                                strokeWidth="8" 
+                                className="transition-all duration-1000" 
+                                strokeWidth="7" 
                                 strokeDasharray="251.2" 
                                 strokeDashoffset={251.2 - (251.2 * journeyDetails.driver_score.score) / 100} 
                                 strokeLinecap="round" 
-                                stroke="currentColor" 
+                                stroke={
+                                  journeyDetails.driver_score.score >= 80 
+                                    ? 'url(#scoreEmerald)' 
+                                    : (journeyDetails.driver_score.score >= 60 ? 'url(#scoreAmber)' : 'url(#scoreRose)')
+                                }
                                 fill="transparent" 
                                 r="40" 
                                 cx="50" 
@@ -1154,7 +1192,7 @@ export default function App() {
                           {/* Quick Stats on events */}
                           <div className="w-full sm:max-w-[210px] space-y-1.5 text-[11px] shrink-0">
                             <div className="flex items-center justify-between gap-2 text-slate-600 p-1 hover:bg-slate-50 rounded-xl transition-all duration-200">
-                              <span className="font-bold text-slate-500 truncate flex items-center gap-2 select-none">
+                              <span className="font-bold text-slate-600 flex items-center gap-2 select-none shrink-0">
                                 <span className={`w-2 h-2 rounded-full shrink-0 ${
                                   journeyDetails.journey.acceleration_events === 0 ? 'bg-emerald-500 shadow-sm shadow-emerald-400' : (journeyDetails.journey.acceleration_events < 4 ? 'bg-amber-500' : 'bg-rose-500')
                                 }`} />
@@ -1165,7 +1203,7 @@ export default function App() {
                               </span>
                             </div>
                             <div className="flex items-center justify-between gap-2 text-slate-600 p-1 hover:bg-slate-50 rounded-xl transition-all duration-200">
-                              <span className="font-bold text-slate-500 truncate flex items-center gap-2 select-none">
+                              <span className="font-bold text-slate-600 flex items-center gap-2 select-none shrink-0">
                                 <span className={`w-2 h-2 rounded-full shrink-0 ${
                                   journeyDetails.journey.brake_events === 0 ? 'bg-emerald-500 shadow-sm shadow-emerald-400' : (journeyDetails.journey.brake_events < 4 ? 'bg-amber-500' : 'bg-rose-500')
                                 }`} />
@@ -1176,7 +1214,7 @@ export default function App() {
                               </span>
                             </div>
                             <div className="flex items-center justify-between gap-2 text-slate-600 p-1 hover:bg-slate-50 rounded-xl transition-all duration-200">
-                              <span className="font-bold text-slate-500 truncate flex items-center gap-2 select-none">
+                              <span className="font-bold text-slate-600 flex items-center gap-2 select-none shrink-0">
                                 <span className={`w-2 h-2 rounded-full shrink-0 ${
                                   journeyDetails.journey.overspeed_count === 0 ? 'bg-emerald-500 shadow-sm shadow-emerald-400' : (journeyDetails.journey.overspeed_count < 2 ? 'bg-amber-500' : 'bg-rose-500')
                                 }`} />
@@ -1187,7 +1225,7 @@ export default function App() {
                               </span>
                             </div>
                             <div className="flex items-center justify-between gap-2 text-slate-600 p-1 hover:bg-slate-50 rounded-xl transition-all duration-200">
-                              <span className="font-bold text-slate-500 truncate flex items-center gap-2 select-none">
+                              <span className="font-bold text-slate-600 flex items-center gap-2 select-none shrink-0">
                                 <span className={`w-2 h-2 rounded-full shrink-0 ${
                                   (journeyDetails.journey.idle_time_min || 0) < 10 ? 'bg-emerald-500 shadow-sm shadow-emerald-400' : ((journeyDetails.journey.idle_time_min || 0) < 25 ? 'bg-amber-500' : 'bg-rose-500')
                                 }`} />
