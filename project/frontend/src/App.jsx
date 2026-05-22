@@ -370,7 +370,7 @@ export default function App() {
   const [isLoadingJourneys, setIsLoadingJourneys] = useState(false);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [isRecomputing, setIsRecomputing] = useState(false);
-  const [isUsingMock, setIsUsingMock] = useState(false);
+  const [isUsingMock, setIsUsingMock] = useState(true);
 
   // --- PREDICTIVE VEHICLE MAINTENANCE SYSTEM STATES ---
   const [isMaintDialogOpen, setIsMaintDialogOpen] = useState(false);
@@ -386,67 +386,89 @@ export default function App() {
   useEffect(() => {
     const fetchDrivers = async () => {
       setIsLoadingDrivers(true);
-      try {
-        const res = await fetch('/api/drivers/');
-        if (!res.ok) throw new Error('API offline');
-        const data = await res.json();
-        
-        const enriched = data.map(d => {
-          const fallbackName = {
-            "DR001": "Alexander Sterling",
-            "DR002": "Marcus Vance",
-            "DR003": "Elena Rostova",
-            "DR004": "Devon Lane",
-            "DR005": "Ronald Richards",
-            "DR006": "Bessie Cooper",
-            "DR007": "Albert Flores",
-            "DR008": "Courtney Henry",
-            "DR009": "Kathryn Murphy",
-            "DR010": "Dianne Russell"
-          }[d.driver_id] || `Driver ${d.driver_id.replace('DR', '')}`;
+      if (isUsingMock) {
+        // Load mock drivers immediately
+        setTimeout(() => {
+          setDrivers(MOCK_DRIVERS);
+          if (MOCK_DRIVERS.length > 0) {
+            setActiveDriverId(MOCK_DRIVERS[0].driver_id);
+          }
+          setIsLoadingDrivers(false);
+        }, 150);
+      } else {
+        try {
+          const res = await fetch('/api/drivers/');
+          if (!res.ok) throw new Error('API offline');
+          const data = await res.json();
+          
+          // Enrich the raw SQL driver objects so that the UI can render
+          // them beautifully without any rendering crashes.
+          const enriched = data.map(d => {
+            const fallbackName = {
+              "DR001": "Alexander Sterling",
+              "DR002": "Marcus Vance",
+              "DR003": "Elena Rostova",
+              "DR004": "Devon Lane",
+              "DR005": "Ronald Richards",
+              "DR006": "Bessie Cooper",
+              "DR007": "Albert Flores",
+              "DR008": "Courtney Henry",
+              "DR009": "Kathryn Murphy",
+              "DR010": "Dianne Russell"
+            }[d.driver_id] || `Driver ${d.driver_id.replace('DR', '')}`;
 
-          const fallbackVehicleType = {
-            "DR001": "Mini Truck",
-            "DR002": "Mini Truck",
-            "DR003": "Medium Cargo",
-            "DR004": "Heavy Cargo Truck",
-            "DR005": "Heavy Cargo Truck",
-            "DR006": "Pickup Truck",
-            "DR007": "Heavy Cargo Truck",
-            "DR008": "Mini Truck",
-            "DR009": "Mini Truck",
-            "DR010": "Mini Truck"
-          }[d.driver_id] || "Mini Truck";
+            const fallbackVehicleType = {
+              "DR001": "Mini Truck",
+              "DR002": "Mini Truck",
+              "DR003": "Medium Cargo",
+              "DR004": "Heavy Cargo Truck",
+              "DR005": "Heavy Cargo Truck",
+              "DR006": "Pickup Truck",
+              "DR007": "Heavy Cargo Truck",
+              "DR008": "Mini Truck",
+              "DR009": "Mini Truck",
+              "DR010": "Mini Truck"
+            }[d.driver_id] || "Mini Truck";
 
-          const fallbackVehicleId = `VH0${d.driver_id.replace('DR', '')}`;
+            const fallbackVehicleId = `VH0${d.driver_id.replace('DR', '')}`;
 
-          return {
-            ...d,
-            name: d.driver_name || fallbackName,
-            avatar_color: getDriverColor(d.driver_id),
-            vehicle_type: d.vehicle_type || fallbackVehicleType,
-            vehicle_id: d.vehicle_id || fallbackVehicleId
-          };
-        });
-        
-        setDrivers(enriched);
-        setIsUsingMock(false);
-        if (enriched.length > 0) {
-          setActiveDriverId(enriched[0].driver_id);
+            return {
+              ...d,
+              name: d.driver_name || fallbackName,
+              avatar_color: getDriverColor(d.driver_id),
+              vehicle_type: d.vehicle_type || fallbackVehicleType,
+              vehicle_id: d.vehicle_id || fallbackVehicleId
+            };
+          });
+          
+          if (enriched.length === 0) {
+            console.warn("Backend API returned empty fleet. Switching to high-fidelity frontend fallback mock data.");
+            setDrivers(MOCK_DRIVERS);
+            setIsUsingMock(true);
+            if (MOCK_DRIVERS.length > 0) {
+              setActiveDriverId(MOCK_DRIVERS[0].driver_id);
+            }
+          } else {
+            setDrivers(enriched);
+            if (enriched.length > 0) {
+              setActiveDriverId(enriched[0].driver_id);
+            }
+          }
+        } catch (err) {
+          console.warn("Backend API not reachable. Switching to high-fidelity frontend fallback mock data.");
+          setDrivers(MOCK_DRIVERS);
+          setIsUsingMock(true);
+          if (MOCK_DRIVERS.length > 0) {
+            setActiveDriverId(MOCK_DRIVERS[0].driver_id);
+          }
+        } finally {
+          setIsLoadingDrivers(false);
         }
-      } catch (err) {
-        console.warn("Backend API not reachable. Switching to high-fidelity frontend fallback mock data.");
-        setDrivers(MOCK_DRIVERS);
-        setIsUsingMock(true);
-        if (MOCK_DRIVERS.length > 0) {
-          setActiveDriverId(MOCK_DRIVERS[0].driver_id);
-        }
-      } finally {
-        setIsLoadingDrivers(false);
+      }
       }
     };
     fetchDrivers();
-  }, []);
+  }, [isUsingMock]);
 
   // --- 2. LOAD JOURNEYS (triggers when activeDriverId changes) ---
   useEffect(() => {
@@ -720,11 +742,22 @@ export default function App() {
 
         {/* Global Stats Pill Bar */}
         <div className="hidden lg:flex items-center gap-6 text-xs font-semibold">
-          <div className="flex items-center gap-2.5 px-3 py-1.5 bg-slate-50 border border-slate-200/60 rounded-xl shadow-sm">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 pulse-glow-green"></span>
-            <span className="text-slate-400">Status:</span>
-            <span className="text-slate-700 uppercase font-bold">{isUsingMock ? "Mock Fallback Demo" : "Connected (SQL Server)"}</span>
-          </div>
+          <button 
+            onClick={() => setIsUsingMock(!isUsingMock)}
+            className={`flex items-center gap-2 px-3 py-1.5 border rounded-xl shadow-sm transition-all duration-300 ${
+              isUsingMock 
+                ? 'bg-amber-50/70 border-amber-200 text-amber-700 hover:bg-amber-100/70 hover:shadow-sm' 
+                : 'bg-emerald-50/70 border-emerald-200 text-emerald-700 hover:bg-emerald-100/70 hover:shadow-sm'
+            }`}
+            title="Click to toggle between Live SQL Server and Demo Mock data"
+          >
+            <span className={`w-2.5 h-2.5 rounded-full ${isUsingMock ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500 pulse-glow-green'}`}></span>
+            <span className="text-slate-400 font-medium">Status:</span>
+            <span className="font-bold uppercase">
+              {isUsingMock ? "Demo Mock Data" : "Connected (SQL Server)"}
+            </span>
+            <RefreshCw className="w-3 h-3 ml-1 opacity-75" />
+          </button>
           <div className="flex items-center gap-2">
             <span className="text-slate-400">Total Trips:</span>
             <span className="text-slate-800 font-bold font-outfit text-sm">{(totalFleetTrips || 13548).toLocaleString()}</span>
@@ -1069,9 +1102,9 @@ export default function App() {
                         </div>
 
                         {/* Circular Score Gauge & Layout */}
-                        <div className="flex flex-col sm:flex-row xl:flex-col 2xl:flex-row items-center justify-around gap-6 mb-5">
+                        <div className="flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-8 mb-5 w-full">
                           {/* Circle Progress bar */}
-                          <div className="relative w-28 h-28 shrink-0 flex items-center justify-center">
+                          <div className="relative w-32 h-32 shrink-0 flex items-center justify-center bg-slate-50/50 rounded-full p-2 border border-slate-100/50 shadow-inner">
                             <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
                               {/* Background track circle */}
                               <circle 
@@ -1100,11 +1133,13 @@ export default function App() {
                               />
                             </svg>
                             <div className="absolute text-center">
-                              <span className="text-3xl font-black font-outfit text-slate-800 block leading-none">{journeyDetails.driver_score.score}</span>
-                              <span className="text-[10px] text-slate-400 font-bold uppercase mt-1">out of 100</span>
+                              <span className="text-4xl font-black font-outfit text-slate-800 block leading-none">{journeyDetails.driver_score.score}</span>
+                              <span className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-wider">out of 100</span>
                             </div>
-                                           {/* Quick Stats on events */}
-                          <div className="flex-1 min-w-0 space-y-1.5 text-[11px] w-full">
+                          </div>
+
+                          {/* Quick Stats on events */}
+                          <div className="w-full sm:max-w-[210px] space-y-1.5 text-[11px] shrink-0">
                             <div className="flex items-center justify-between gap-2 text-slate-600 p-1 hover:bg-slate-50 rounded-xl transition-all duration-200">
                               <span className="font-bold text-slate-500 truncate flex items-center gap-2 select-none">
                                 <span className={`w-2 h-2 rounded-full shrink-0 ${
@@ -1149,7 +1184,7 @@ export default function App() {
                                 {(journeyDetails.journey.idle_time_min || 0).toFixed(1)} mins
                               </span>
                             </div>
-                          </div>             </div>
+                          </div>
                         </div>
                       </div>
 
