@@ -391,13 +391,43 @@ export default function App() {
         if (!res.ok) throw new Error('API offline');
         const data = await res.json();
         
-        const enriched = data.map(d => ({
-          ...d,
-          name: d.driver_name,
-          avatar_color: getDriverColor(d.driver_id),
-          vehicle_type: d.vehicle_type,
-          vehicle_id: d.vehicle_id
-        }));
+        const enriched = data.map(d => {
+          const fallbackName = {
+            "DR001": "Alexander Sterling",
+            "DR002": "Marcus Vance",
+            "DR003": "Elena Rostova",
+            "DR004": "Devon Lane",
+            "DR005": "Ronald Richards",
+            "DR006": "Bessie Cooper",
+            "DR007": "Albert Flores",
+            "DR008": "Courtney Henry",
+            "DR009": "Kathryn Murphy",
+            "DR010": "Dianne Russell"
+          }[d.driver_id] || `Driver ${d.driver_id.replace('DR', '')}`;
+
+          const fallbackVehicleType = {
+            "DR001": "Mini Truck",
+            "DR002": "Mini Truck",
+            "DR003": "Medium Cargo",
+            "DR004": "Heavy Cargo Truck",
+            "DR005": "Heavy Cargo Truck",
+            "DR006": "Pickup Truck",
+            "DR007": "Heavy Cargo Truck",
+            "DR008": "Mini Truck",
+            "DR009": "Mini Truck",
+            "DR010": "Mini Truck"
+          }[d.driver_id] || "Mini Truck";
+
+          const fallbackVehicleId = `VH0${d.driver_id.replace('DR', '')}`;
+
+          return {
+            ...d,
+            name: d.driver_name || fallbackName,
+            avatar_color: getDriverColor(d.driver_id),
+            vehicle_type: d.vehicle_type || fallbackVehicleType,
+            vehicle_id: d.vehicle_id || fallbackVehicleId
+          };
+        });
         
         setDrivers(enriched);
         setIsUsingMock(false);
@@ -654,8 +684,8 @@ export default function App() {
 
   // --- 5. SEARCH & FILTER ---
   const filteredDrivers = drivers.filter(d => 
-    d.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    d.driver_id.toLowerCase().includes(searchTerm.toLowerCase())
+    (d.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (d.driver_id || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const activeDriver = drivers.find(d => d.driver_id === activeDriverId) || MOCK_DRIVERS[0];
@@ -1442,7 +1472,7 @@ export default function App() {
                     Predictive Vehicle Diagnostics Centre
                   </h2>
                   <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">
-                    {maintHealthData ? `${maintHealthData.make} ${maintHealthData.model} (${maintHealthData.reg_no})` : "Vehicle Telemetry Wear Analysis"}
+                    {maintHealthData ? `${maintHealthData.make || 'Vehicle'} ${maintHealthData.model || ''} (${maintHealthData.reg_no || maintHealthData.vehicle_id || 'Unknown'})`.trim() : "Vehicle Telemetry Wear Analysis"}
                   </p>
                 </div>
               </div>
@@ -1521,7 +1551,7 @@ export default function App() {
                         </div>
                         <div>
                           <span className="text-[10px] text-slate-400 font-bold uppercase block leading-none mb-1">Vehicle ID / Reg No</span>
-                          <span className="text-sm font-extrabold font-outfit text-slate-800">{maintHealthData.reg_no} ({maintHealthData.vehicle_id})</span>
+                          <span className="text-sm font-extrabold font-outfit text-slate-800">{maintHealthData.reg_no || 'Unknown'} {maintHealthData.vehicle_id && `(${maintHealthData.vehicle_id})`}</span>
                         </div>
                       </div>
                     </div>
@@ -1530,9 +1560,10 @@ export default function App() {
                   {/* Components Wear Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {maintHealthData && maintHealthData.components && maintHealthData.components.map((c, ci) => {
-                      const health = parseFloat(c.health_score).toFixed(1);
-                      const isCrit = c.health_score < 10.0;
-                      const isWarn = c.health_score >= 10.0 && c.health_score < 30.0;
+                      const healthScoreVal = c && c.health_score !== undefined && c.health_score !== null ? parseFloat(c.health_score) : 100.0;
+                      const health = healthScoreVal.toFixed(1);
+                      const isCrit = healthScoreVal < 10.0;
+                      const isWarn = healthScoreVal >= 10.0 && healthScoreVal < 30.0;
                       const colorClass = isCrit ? 'text-rose-500' : isWarn ? 'text-amber-500' : 'text-emerald-500';
                       const strokeColor = isCrit ? '#ef4444' : isWarn ? '#f59e0b' : '#10b981';
                       
@@ -1691,51 +1722,65 @@ export default function App() {
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {maintFleetSummary && maintFleetSummary.fleet && maintFleetSummary.fleet
-                            .filter(v => maintSearchTerm === '' || v.reg_no.toLowerCase().includes(maintSearchTerm.toLowerCase()))
-                            .filter(v => maintFilterStatus === 'all' || v.overall_status === maintFilterStatus)
-                            .map((v, vi) => (
-                              <tr key={vi} className="hover:bg-slate-50/60 transition-colors">
-                                <td className="py-4 px-6">
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 font-black font-outfit shrink-0">
-                                      {v.reg_no.substring(0, 2)}
+                            .filter(v => {
+                              if (!v) return false;
+                              const regNo = (v.reg_no || '').toLowerCase();
+                              return maintSearchTerm === '' || regNo.includes((maintSearchTerm || '').toLowerCase());
+                            })
+                            .filter(v => v && (maintFilterStatus === 'all' || v.overall_status === maintFilterStatus))
+                            .map((v, vi) => {
+                              const regNo = v.reg_no || v.vehicle_id || 'Unknown';
+                              const make = v.make || 'Vehicle';
+                              const model = v.model || '';
+                              const vehicleId = v.vehicle_id || '';
+                              const overallStatus = v.overall_status || 'ok';
+                              const criticalCount = v.critical_count || 0;
+                              const warningCount = v.warning_count || 0;
+                              const minHealth = v.min_health !== undefined && v.min_health !== null ? parseFloat(v.min_health) : 100.0;
+                              return (
+                                <tr key={vi} className="hover:bg-slate-50/60 transition-colors">
+                                  <td className="py-4 px-6">
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 font-black font-outfit shrink-0">
+                                        {regNo.substring(0, 2)}
+                                      </div>
+                                      <div>
+                                        <span className="text-slate-800 font-bold block">{regNo}</span>
+                                        <span className="text-[10px] text-slate-400">{make} {model} {vehicleId && `(${vehicleId})`}</span>
+                                      </div>
                                     </div>
-                                    <div>
-                                      <span className="text-slate-800 font-bold block">{v.reg_no}</span>
-                                      <span className="text-[10px] text-slate-400">{v.make} {v.model} ({v.vehicle_id})</span>
-                                    </div>
-                                  </div>
-                                </td>
-                                <td className="py-4 px-6">
-                                  <span className={`text-[9px] px-2 py-0.5 rounded-full font-black border uppercase tracking-wider ${
-                                    v.overall_status === 'critical' ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                    v.overall_status === 'warning' ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                    'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                  }`}>
-                                    {v.overall_status}
-                                  </span>
-                                </td>
-                                <td className="py-4 px-6 text-center text-slate-800 font-black">{v.critical_count}</td>
-                                <td className="py-4 px-6 text-center text-slate-800 font-black">{v.warning_count}</td>
-                                <td className="py-4 px-6 text-right text-slate-800 font-black">
-                                  <span className={v.min_health < 30.0 ? 'text-rose-600 animate-pulse' : 'text-slate-800'}>
-                                    {parseFloat(v.min_health).toFixed(1)}%
-                                  </span>
-                                </td>
-                                <td className="py-4 px-6 text-right">
-                                  <button
-                                    onClick={() => {
-                                      setMaintVehicleId(v.vehicle_id);
-                                      openMaintenanceDashboard(v.vehicle_id);
-                                      setActiveMaintTab('vehicle');
-                                    }}
-                                    className="text-[10px] font-bold text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-100 rounded-xl px-2.5 py-1.5 transition-all cursor-pointer outline-none"
-                                  >
-                                    Load Wear diagnostics
-                                  </button>
-                                </td>
-                              </tr>
-                            ))}
+                                  </td>
+                                  <td className="py-4 px-6">
+                                    <span className={`text-[9px] px-2 py-0.5 rounded-full font-black border uppercase tracking-wider ${
+                                      overallStatus === 'critical' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                      overallStatus === 'warning' ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                      'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    }`}>
+                                      {overallStatus}
+                                    </span>
+                                  </td>
+                                  <td className="py-4 px-6 text-center text-slate-800 font-black">{criticalCount}</td>
+                                  <td className="py-4 px-6 text-center text-slate-800 font-black">{warningCount}</td>
+                                  <td className="py-4 px-6 text-right text-slate-800 font-black">
+                                    <span className={minHealth < 30.0 ? 'text-rose-600 animate-pulse' : 'text-slate-800'}>
+                                      {minHealth.toFixed(1)}%
+                                    </span>
+                                  </td>
+                                  <td className="py-4 px-6 text-right">
+                                    <button
+                                      onClick={() => {
+                                        setMaintVehicleId(vehicleId);
+                                        openMaintenanceDashboard(vehicleId);
+                                        setActiveMaintTab('vehicle');
+                                      }}
+                                      className="text-[10px] font-bold text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100 border border-brand-100 rounded-xl px-2.5 py-1.5 transition-all cursor-pointer outline-none"
+                                    >
+                                      Load Wear diagnostics
+                                    </button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
                         </tbody>
                       </table>
                     </div>
