@@ -465,7 +465,6 @@ export default function App() {
           setIsLoadingDrivers(false);
         }
       }
-      }
     };
     fetchDrivers();
   }, [isUsingMock]);
