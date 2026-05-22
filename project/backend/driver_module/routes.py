@@ -13,10 +13,10 @@ Endpoints:
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, text
 
 from database.db import get_db
-from driver_module.model import Trip
+from driver_module.model import Trip, Driver, Vehicle
 from driver_module.scorer import calculate_trip_score, get_risk_level
 from driver_module.schema import (
     DriverSummary,
@@ -72,11 +72,36 @@ def get_all_drivers(db: Session = Depends(get_db)):
 
     result = []
     for row in rows:
-        trips = db.query(Trip).filter(Trip.driver_id == row.driver_id).all()
+        trips = db.query(Trip).filter(Trip.driver_id == row.driver_id).order_by(Trip.trip_start.desc()).all()
         avg_score = _avg_score_for_trips(trips)
+        
+        # Get driver name from Driver table in DB
+        driver_obj = db.query(Driver).filter(Driver.driver_id == row.driver_id).first()
+        driver_name = driver_obj.driver_name if (driver_obj and driver_obj.driver_name) else f"Driver {row.driver_id.replace('DR', '')}"
+        
+        # Get vehicle type, vehicle_id, odometer, and engine hours from the latest trip
+        latest_trip = trips[0] if trips else None
+        vehicle_type = "Unknown"
+        vehicle_id = "N/A"
+        total_odometer = 0.0
+        engine_hours = 0.0
+        if latest_trip:
+            vehicle_id = latest_trip.vehicle_id or "N/A"
+            total_odometer = latest_trip.Total_Odometer or 0.0
+            engine_hours = latest_trip.engine_total_hour or 0.0
+            if hasattr(latest_trip, "vehicle_type") and latest_trip.vehicle_type:
+                vehicle_type = latest_trip.vehicle_type
+            elif latest_trip.vehicle and latest_trip.vehicle.vehicle_type:
+                vehicle_type = latest_trip.vehicle.vehicle_type
+
         result.append(
             DriverSummary(
                 driver_id=row.driver_id,
+                driver_name=driver_name,
+                vehicle_type=vehicle_type,
+                vehicle_id=vehicle_id,
+                total_odometer_km=total_odometer,
+                engine_total_hours=engine_hours,
                 total_trips=row.total_trips,
                 avg_score=avg_score,
                 risk_level=get_risk_level(avg_score),
@@ -135,10 +160,29 @@ def get_leaderboard(db: Session = Depends(get_db)):
 # ─────────────────────────────────────────
 @router.get("/{driver_id}", response_model=DriverDetail)
 def get_driver_detail(driver_id: str, db: Session = Depends(get_db)):
-    trips = db.query(Trip).filter(Trip.driver_id == driver_id).all()
+    trips = db.query(Trip).filter(Trip.driver_id == driver_id).order_by(Trip.trip_start.desc()).all()
 
     if not trips:
         raise HTTPException(status_code=404, detail=f"Driver '{driver_id}' not found")
+
+    # Fetch driver name from Driver table in DB
+    driver_obj = db.query(Driver).filter(Driver.driver_id == driver_id).first()
+    driver_name = driver_obj.driver_name if (driver_obj and driver_obj.driver_name) else f"Driver {driver_id.replace('DR', '')}"
+
+    # Get vehicle type, vehicle_id, odometer, and engine hours from the latest trip
+    latest_trip = trips[0] if trips else None
+    vehicle_type = "Unknown"
+    vehicle_id = "N/A"
+    total_odometer = 0.0
+    engine_hours = 0.0
+    if latest_trip:
+        vehicle_id = latest_trip.vehicle_id or "N/A"
+        total_odometer = latest_trip.Total_Odometer or 0.0
+        engine_hours = latest_trip.engine_total_hour or 0.0
+        if hasattr(latest_trip, "vehicle_type") and latest_trip.vehicle_type:
+            vehicle_type = latest_trip.vehicle_type
+        elif latest_trip.vehicle and latest_trip.vehicle.vehicle_type:
+            vehicle_type = latest_trip.vehicle.vehicle_type
 
     total_trips    = len(trips)
     total_distance = sum(t.distance_km or 0.0 for t in trips)
@@ -163,6 +207,11 @@ def get_driver_detail(driver_id: str, db: Session = Depends(get_db)):
 
     return DriverDetail(
         driver_id=driver_id,
+        driver_name=driver_name,
+        vehicle_type=vehicle_type,
+        vehicle_id=vehicle_id,
+        total_odometer_km=total_odometer,
+        engine_total_hours=engine_hours,
         total_trips=total_trips,
         avg_score=avg_score,
         risk_level=get_risk_level(avg_score),
@@ -333,35 +382,77 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
     if expected_fuel > 0:
         variance_pct = round(((actual_fuel - expected_fuel) / expected_fuel) * 100, 2)
 
-    # ── Maintenance signals (Person 3 will upgrade this) ──
-    # Using real sensor data from DB where available
-    ext_voltage   = getattr(trip, "external_voltage", None)
-    coolant_temp  = getattr(trip, "temp_celsius", None)
+    # ── Maintenance signals (Person 3 - Integrated Real DB Calculations) ──
+    # Fetch real sensor telemetry for this trip
+    telemetry_row = db.execute(
+        text("""
+            SELECT TOP 1 battery_voltage, coolant_temp 
+            FROM raw_telemetry 
+            WHERE trip_id = :trip_id 
+            ORDER BY ts DESC
+        """),
+        {"trip_id": trip_id}
+    ).fetchone()
+
+    ext_voltage = float(telemetry_row[0]) if telemetry_row and telemetry_row[0] is not None else 12.6
+    coolant_temp = float(telemetry_row[1]) if telemetry_row and telemetry_row[1] is not None else (trip.temp_celsius or 85.0)
+
+    # Fetch active (unacknowledged) database alerts for this vehicle
+    alerts_rows = db.execute(
+        text("""
+            SELECT id, component, alert_level, message 
+            FROM maintenance_alerts 
+            WHERE vehicle_id = :vid AND acknowledged = 0
+        """),
+        {"vid": trip.vehicle_id}
+    ).fetchall()
 
     maint_alerts = []
-    maint_priority = "OK"
-    if ext_voltage is not None and ext_voltage < 11.5:
-        maint_alerts.append({
-            "issue": "Battery Issue",
-            "severity": "Critical",
-            "detail": f"External voltage drop: {ext_voltage:.1f} V (threshold < 11.5 V)"
-        })
-        maint_priority = "Critical"
-    if coolant_temp is not None and coolant_temp > 100:
-        maint_alerts.append({
-            "issue": "Engine Overheating",
-            "severity": "Critical",
-            "detail": f"Temperature: {coolant_temp:.1f}°C exceeds max threshold of 100°C"
-        })
-        maint_priority = "Critical"
+    has_critical = False
+    has_warning = False
 
-    if not maint_alerts and final_score < 60:
+    for r in alerts_rows:
+        alert_id, comp, lvl, msg = r
+        sev = "Critical" if lvl in ("critical", "urgent") else "Warning"
+        if sev == "Critical":
+            has_critical = True
+        else:
+            has_warning = True
+
         maint_alerts.append({
-            "issue": "Brake Wear",
-            "severity": "Warning",
-            "detail": "Harsh braking frequency suggests high wear rates"
+            "id": str(alert_id),
+            "issue": f"{comp.upper()} Issue" if "worn out" not in msg else f"{comp.upper()} Replacement Required",
+            "severity": sev,
+            "detail": msg
         })
+
+    # Add real-time battery voltage alert check
+    if ext_voltage < 11.5:
+        if not any(a["issue"] == "Battery Issue" for a in maint_alerts):
+            maint_alerts.append({
+                "issue": "Battery Issue",
+                "severity": "Critical",
+                "detail": f"External voltage drop: {ext_voltage:.1f} V (threshold < 11.5 V)"
+            })
+            has_critical = True
+
+    # Add real-time coolant temp alert check
+    if coolant_temp > 100.0:
+        if not any(a["issue"] == "Engine Overheating" for a in maint_alerts):
+            maint_alerts.append({
+                "issue": "Engine Overheating",
+                "severity": "Critical",
+                "detail": f"Temperature: {coolant_temp:.1f}°C exceeds max threshold of 100°C"
+            })
+            has_critical = True
+
+    # Set priority based on open alerts
+    if has_critical:
+        maint_priority = "Critical"
+    elif has_warning:
         maint_priority = "Warning"
+    else:
+        maint_priority = "OK"
 
     # ── Combined Response ─────────────────────────────────
     return {
