@@ -372,11 +372,13 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
         else "Poor"
     )
 
-    # ── Fuel Theft Detection (Person 2 will upgrade this) ──
+    # ── Fuel Theft Detection (reads from journey_fuel_logs via fuel_module) ──
+    from fuel_module.routes import get_fuel_theft_for_trip
+    fuel_theft_data = get_fuel_theft_for_trip(db, driver_id, trip_id)
+
+    # ── Fuel Consumption (from journey_scores — Person 2 will upgrade) ──
     actual_fuel   = trip.actual_fuel_used_L or 0.0
     expected_fuel = trip.expected_fuel_L or 0.0
-    theft_occurred = bool(trip.theft_occurred)
-    theft_amount   = trip.theft_amount_L or 0.0
 
     variance_pct = 0.0
     if expected_fuel > 0:
@@ -551,17 +553,8 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
             }
         },
 
-        # ── Fuel Theft Module (Person 2 will upgrade) ────
-        "fuel_theft": {
-            "detected":   theft_occurred,
-            "amount_L":   theft_amount,
-            "confidence": 90.0 if theft_occurred else 5.0,
-            "status":     "ALERT" if theft_occurred else "NORMAL",
-            "reasons":    [
-                f"Theft amount detected: {theft_amount:.1f} L",
-                f"Fuel variance: {variance_pct:.1f}% above expected"
-            ] if theft_occurred else [],
-        },
+        # ── Fuel Theft Module (live from journey_fuel_logs) ─
+        "fuel_theft": fuel_theft_data,
 
         # ── Fuel Consumption Module (Person 2) ───────────
         "expected_fuel": {
