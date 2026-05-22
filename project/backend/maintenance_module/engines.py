@@ -111,10 +111,10 @@ def process_vehicle_brakes(db: Session, vehicle_id: str, reg_no: str):
         return 0
 
     # 3. Determine max weight
-    gvw_max = db.execute(
+    gvw_max = float(db.execute(
         text("SELECT MAX(gvw) FROM raw_telemetry WHERE vehicle_id = :vid"),
         {"vid": vehicle_id}
-    ).scalar() or 20000.0
+    ).scalar() or 20000.0)
 
     prev_brake = 0
     brake_count = db.execute(
@@ -234,10 +234,10 @@ def process_vehicle_clutch(db: Session, vehicle_id: str, reg_no: str):
     if not rows:
         return 0
 
-    gvw_max = db.execute(
+    gvw_max = float(db.execute(
         text("SELECT MAX(gvw) FROM raw_telemetry WHERE vehicle_id = :vid"),
         {"vid": vehicle_id}
-    ).scalar() or 20000.0
+    ).scalar() or 20000.0)
 
     prev_rpm = 0
     prev_speed = 0.0
@@ -358,10 +358,10 @@ def process_vehicle_tires(db: Session, vehicle_id: str, reg_no: str):
     ).fetchone()
     a, b, c, d = (float(coeffs[0]), float(coeffs[1]), float(coeffs[2]), float(coeffs[3])) if coeffs else (1.0, 1.2, 1.1, 0.8)
 
-    gvw_max = db.execute(
+    gvw_max = float(db.execute(
         text("SELECT MAX(gvw) FROM raw_telemetry WHERE vehicle_id = :vid"),
         {"vid": vehicle_id}
-    ).scalar() or 20000.0
+    ).scalar() or 20000.0)
 
     events = []
     total_wear = 0.0

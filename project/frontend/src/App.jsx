@@ -167,7 +167,12 @@ const getMockJourneyDetails = (journeyId, driverId) => {
           ]
         : (brief.driver_score < 70 
             ? [{issue: 'Brake Wear', severity: 'Warning', detail: 'Harsh braking frequency suggests high wear rates'}]
-            : [])
+            : []),
+      health_scores: isMaintCritical 
+        ? { brake: 88.5, clutch: 6.0, tire: 92.4, battery: 9.3, engine: 75.6 }
+        : (brief.driver_score < 70 
+            ? { brake: 25.4, clutch: 65.2, tire: 84.1, battery: 94.0, engine: 88.2 }
+            : { brake: 95.8, clutch: 78.8, tire: 98.1, battery: 100.0, engine: 92.5 })
     },
     speed_profile: speedProfile
   };
@@ -523,6 +528,15 @@ export default function App() {
   useEffect(() => {
     if (!activeJourneyId) return;
     
+    // Safety guard: prevent race conditions where stale mock or mismatched trip IDs are queried in live DB mode
+    if (!isUsingMock) {
+      const isMockTripId = activeJourneyId.startsWith('TR009');
+      const tripExists = journeys.some(j => j.journey_id === activeJourneyId);
+      if (isMockTripId || (journeys.length > 0 && !tripExists)) {
+        return;
+      }
+    }
+    
     const fetchDetails = async () => {
       setIsLoadingDetails(true);
       if (isUsingMock) {
@@ -560,7 +574,7 @@ export default function App() {
       }
     };
     fetchDetails();
-  }, [activeJourneyId, activeDriverId, isUsingMock]);
+  }, [activeJourneyId, activeDriverId, isUsingMock, journeys]);
 
   // --- 4. RECOMPUTE SAFETY MODELS ---
   const handleRecompute = async () => {
@@ -638,12 +652,12 @@ export default function App() {
       }, 400);
     } else {
       try {
-        const resH = await fetch(`/maintenance/health/${vid}`);
+        const resH = await fetch(`/api/maintenance/health/${vid}`);
         if (resH.ok) {
           const dataH = await resH.json();
           setMaintHealthData(dataH);
         }
-        const resF = await fetch(`/maintenance/fleet`);
+        const resF = await fetch(`/api/maintenance/fleet`);
         if (resF.ok) {
           const dataF = await resF.json();
           setMaintFleetSummary(dataF);
@@ -686,7 +700,7 @@ export default function App() {
       }
     } else {
       try {
-        const res = await fetch(`/maintenance/alerts/${alertId}/ack`, { method: 'POST' });
+        const res = await fetch(`/api/maintenance/alerts/${alertId}/ack`, { method: 'POST' });
         if (res.ok) {
           const detailsRes = await fetch(`/api/drivers/${activeDriverId}/trips/${activeJourneyId}/details`);
           if (detailsRes.ok) {
@@ -1440,6 +1454,48 @@ export default function App() {
                             <p className={`text-base font-black font-outfit ${journeyDetails.journey.dallas_temp_celsius > 100.0 ? 'text-rose-700' : 'text-slate-800'}`}>
                               {(journeyDetails.journey.dallas_temp_celsius || 0).toFixed(1)}°C
                             </p>
+                          </div>
+                        </div>
+
+                        {/* Component Wear Health Scores Grid */}
+                        <div className="border-t border-slate-100 pt-4 mt-1 mb-4 space-y-3">
+                          <span className="text-[9px] text-slate-400 font-bold tracking-wide uppercase block">Component Wear Health Scores</span>
+                          <div className="grid grid-cols-1 gap-2.5">
+                            {(() => {
+                              const scores = journeyDetails.maintenance?.health_scores || {
+                                brake: 100, clutch: 100, tire: 100, battery: 100, engine: 100
+                              };
+                              return Object.entries(scores).map(([comp, val]) => {
+                                const scoreVal = val ?? 100;
+                                const isCrit = scoreVal < 10;
+                                const isWarn = scoreVal >= 10 && scoreVal < 30;
+                                
+                                let colorClass = "from-emerald-500 to-teal-500";
+                                let textClass = "text-emerald-600 bg-emerald-50 border-emerald-100";
+                                if (isCrit) {
+                                  colorClass = "from-rose-500 to-red-600";
+                                  textClass = "text-rose-600 bg-rose-50 border-rose-100";
+                                } else if (isWarn) {
+                                  colorClass = "from-amber-500 to-orange-500";
+                                  textClass = "text-amber-600 bg-amber-50 border-amber-100";
+                                }
+                                
+                                return (
+                                  <div key={comp} className="flex items-center justify-between gap-3 text-xs font-semibold">
+                                    <span className="w-16 capitalize text-slate-600 truncate">{comp}</span>
+                                    <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden relative shadow-inner">
+                                      <div 
+                                        className={`h-full rounded-full bg-gradient-to-r ${colorClass} transition-all duration-1000`} 
+                                        style={{ width: `${Math.max(0, Math.min(100, scoreVal))}%` }}
+                                      ></div>
+                                    </div>
+                                    <span className={`text-[9.5px] font-bold font-outfit px-1.5 py-0.5 rounded border select-none shrink-0 w-11 text-center ${textClass}`}>
+                                      {scoreVal.toFixed(0)}%
+                                    </span>
+                                  </div>
+                                );
+                              });
+                            })()}
                           </div>
                         </div>
                       </div>
