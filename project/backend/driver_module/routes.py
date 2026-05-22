@@ -383,6 +383,32 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
         variance_pct = round(((actual_fuel - expected_fuel) / expected_fuel) * 100, 2)
 
     # ── Maintenance signals (Person 3 - Integrated Real DB Calculations) ──
+    # Run the wear engines dynamically to calculate wear based on existing raw telemetry
+    reg_no = db.execute(
+        text("SELECT reg_no FROM vehicles WHERE id = :vid"),
+        {"vid": trip.vehicle_id}
+    ).scalar() or trip.vehicle_id
+    
+    try:
+        from maintenance_module.engines import (
+            ensure_wear_state_initialized,
+            process_vehicle_brakes,
+            process_vehicle_clutch,
+            process_vehicle_tires,
+            process_vehicle_battery,
+            process_vehicle_engine,
+            run_alert_check
+        )
+        ensure_wear_state_initialized(db, trip.vehicle_id)
+        process_vehicle_brakes(db, trip.vehicle_id, reg_no)
+        process_vehicle_clutch(db, trip.vehicle_id, reg_no)
+        process_vehicle_tires(db, trip.vehicle_id, reg_no)
+        process_vehicle_battery(db, trip.vehicle_id, reg_no)
+        process_vehicle_engine(db, trip.vehicle_id, reg_no)
+        run_alert_check(db)
+    except Exception as e:
+        print(f"Error executing wear engines dynamically in details: {e}")
+
     # Fetch real sensor telemetry for this trip
     telemetry_row = db.execute(
         text("""
@@ -453,6 +479,21 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
         maint_priority = "Warning"
     else:
         maint_priority = "OK"
+
+    # Query live component wear scores
+    components_res = db.execute(
+        text("""
+            SELECT component, health_score
+            FROM component_wear_state
+            WHERE vehicle_id = :vid
+        """),
+        {"vid": trip.vehicle_id}
+    ).fetchall()
+
+    health_scores = {c[0]: float(c[1]) if c[1] is not None else 100.0 for c in components_res}
+    for comp in ["brake", "clutch", "tire", "battery", "engine"]:
+        if comp not in health_scores:
+            health_scores[comp] = 100.0
 
     # ── Combined Response ─────────────────────────────────
     return {
@@ -534,6 +575,7 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
             "priority":    maint_priority,
             "alert_count": len(maint_alerts),
             "alerts":      maint_alerts,
+            "health_scores": health_scores,
         },
 
         # ── Speed Profile (placeholder — upgrade with real telemetry) ──
