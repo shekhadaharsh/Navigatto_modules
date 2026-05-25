@@ -372,17 +372,45 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
         else "Poor"
     )
 
-    # ── Fuel Theft Detection (Person 2 will upgrade this) ──
+    # ── Fuel Theft Detection (reads from journey_fuel_logs via fuel_module) ──
+    from fuel_module.routes import get_fuel_theft_for_trip
+    fuel_theft_data = get_fuel_theft_for_trip(db, driver_id, trip_id)
+
+    # ── Fuel Consumption (from journey_scores — Person 2 will upgrade) ──
     actual_fuel   = trip.actual_fuel_used_L or 0.0
     expected_fuel = trip.expected_fuel_L or 0.0
-    theft_occurred = bool(trip.theft_occurred)
-    theft_amount   = trip.theft_amount_L or 0.0
 
     variance_pct = 0.0
     if expected_fuel > 0:
         variance_pct = round(((actual_fuel - expected_fuel) / expected_fuel) * 100, 2)
 
     # ── Maintenance signals (Person 3 - Integrated Real DB Calculations) ──
+    # Run the wear engines dynamically to calculate wear based on existing raw telemetry
+    reg_no = db.execute(
+        text("SELECT reg_no FROM vehicles WHERE id = :vid"),
+        {"vid": trip.vehicle_id}
+    ).scalar() or trip.vehicle_id
+    
+    try:
+        from maintenance_module.engines import (
+            ensure_wear_state_initialized,
+            process_vehicle_brakes,
+            process_vehicle_clutch,
+            process_vehicle_tires,
+            process_vehicle_battery,
+            process_vehicle_engine,
+            run_alert_check
+        )
+        ensure_wear_state_initialized(db, trip.vehicle_id)
+        process_vehicle_brakes(db, trip.vehicle_id, reg_no)
+        process_vehicle_clutch(db, trip.vehicle_id, reg_no)
+        process_vehicle_tires(db, trip.vehicle_id, reg_no)
+        process_vehicle_battery(db, trip.vehicle_id, reg_no)
+        process_vehicle_engine(db, trip.vehicle_id, reg_no)
+        run_alert_check(db)
+    except Exception as e:
+        print(f"Error executing wear engines dynamically in details: {e}")
+
     # Fetch real sensor telemetry for this trip
     telemetry_row = db.execute(
         text("""
@@ -454,6 +482,21 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
     else:
         maint_priority = "OK"
 
+    # Query live component wear scores
+    components_res = db.execute(
+        text("""
+            SELECT component, health_score
+            FROM component_wear_state
+            WHERE vehicle_id = :vid
+        """),
+        {"vid": trip.vehicle_id}
+    ).fetchall()
+
+    health_scores = {c[0]: float(c[1]) if c[1] is not None else 100.0 for c in components_res}
+    for comp in ["brake", "clutch", "tire", "battery", "engine"]:
+        if comp not in health_scores:
+            health_scores[comp] = 100.0
+
     # ── Combined Response ─────────────────────────────────
     return {
         # ── Journey Info ──────────────────────────────────
@@ -510,17 +553,8 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
             }
         },
 
-        # ── Fuel Theft Module (Person 2 will upgrade) ────
-        "fuel_theft": {
-            "detected":   theft_occurred,
-            "amount_L":   theft_amount,
-            "confidence": 90.0 if theft_occurred else 5.0,
-            "status":     "ALERT" if theft_occurred else "NORMAL",
-            "reasons":    [
-                f"Theft amount detected: {theft_amount:.1f} L",
-                f"Fuel variance: {variance_pct:.1f}% above expected"
-            ] if theft_occurred else [],
-        },
+        # ── Fuel Theft Module (live from journey_fuel_logs) ─
+        "fuel_theft": fuel_theft_data,
 
         # ── Fuel Consumption Module (Person 2) ───────────
         "expected_fuel": {
@@ -534,6 +568,7 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
             "priority":    maint_priority,
             "alert_count": len(maint_alerts),
             "alerts":      maint_alerts,
+            "health_scores": health_scores,
         },
 
         # ── Speed Profile (placeholder — upgrade with real telemetry) ──

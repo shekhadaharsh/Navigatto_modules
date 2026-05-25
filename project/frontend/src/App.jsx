@@ -167,7 +167,12 @@ const getMockJourneyDetails = (journeyId, driverId) => {
           ]
         : (brief.driver_score < 70 
             ? [{issue: 'Brake Wear', severity: 'Warning', detail: 'Harsh braking frequency suggests high wear rates'}]
-            : [])
+            : []),
+      health_scores: isMaintCritical 
+        ? { brake: 88.5, clutch: 6.0, tire: 92.4, battery: 9.3, engine: 75.6 }
+        : (brief.driver_score < 70 
+            ? { brake: 25.4, clutch: 65.2, tire: 84.1, battery: 94.0, engine: 88.2 }
+            : { brake: 95.8, clutch: 78.8, tire: 98.1, battery: 100.0, engine: 92.5 })
     },
     speed_profile: speedProfile
   };
@@ -523,6 +528,15 @@ export default function App() {
   useEffect(() => {
     if (!activeJourneyId) return;
     
+    // Safety guard: prevent race conditions where stale mock or mismatched trip IDs are queried in live DB mode
+    if (!isUsingMock) {
+      const isMockTripId = activeJourneyId.startsWith('TR009');
+      const tripExists = journeys.some(j => j.journey_id === activeJourneyId);
+      if (isMockTripId || (journeys.length > 0 && !tripExists)) {
+        return;
+      }
+    }
+    
     const fetchDetails = async () => {
       setIsLoadingDetails(true);
       if (isUsingMock) {
@@ -560,7 +574,7 @@ export default function App() {
       }
     };
     fetchDetails();
-  }, [activeJourneyId, activeDriverId, isUsingMock]);
+  }, [activeJourneyId, activeDriverId, isUsingMock, journeys]);
 
   // --- 4. RECOMPUTE SAFETY MODELS ---
   const handleRecompute = async () => {
@@ -638,12 +652,12 @@ export default function App() {
       }, 400);
     } else {
       try {
-        const resH = await fetch(`/maintenance/health/${vid}`);
+        const resH = await fetch(`/api/maintenance/health/${vid}`);
         if (resH.ok) {
           const dataH = await resH.json();
           setMaintHealthData(dataH);
         }
-        const resF = await fetch(`/maintenance/fleet`);
+        const resF = await fetch(`/api/maintenance/fleet`);
         if (resF.ok) {
           const dataF = await resF.json();
           setMaintFleetSummary(dataF);
@@ -686,7 +700,7 @@ export default function App() {
       }
     } else {
       try {
-        const res = await fetch(`/maintenance/alerts/${alertId}/ack`, { method: 'POST' });
+        const res = await fetch(`/api/maintenance/alerts/${alertId}/ack`, { method: 'POST' });
         if (res.ok) {
           const detailsRes = await fetch(`/api/drivers/${activeDriverId}/trips/${activeJourneyId}/details`);
           if (detailsRes.ok) {
@@ -1105,26 +1119,64 @@ export default function App() {
                           {/* Circle Progress bar */}
                           <div className="relative w-32 h-32 shrink-0 flex items-center justify-center bg-slate-50/50 rounded-full p-2 border border-slate-100/50 shadow-inner">
                             <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                              <defs>
+                                {/* Premium Gradients for Score classification */}
+                                <linearGradient id="scoreEmerald" x1="0%" y1="0%" x2="100%" y2="100%">
+                                  <stop offset="0%" stopColor="#10b981" />
+                                  <stop offset="100%" stopColor="#059669" />
+                                </linearGradient>
+                                <linearGradient id="scoreAmber" x1="0%" y1="0%" x2="100%" y2="100%">
+                                  <stop offset="0%" stopColor="#f59e0b" />
+                                  <stop offset="100%" stopColor="#d97706" />
+                                </linearGradient>
+                                <linearGradient id="scoreRose" x1="0%" y1="0%" x2="100%" y2="100%">
+                                  <stop offset="0%" stopColor="#f43f5e" />
+                                  <stop offset="100%" stopColor="#e11d48" />
+                                </linearGradient>
+                                
+                                {/* Glassmorphic concentric backgrounds */}
+                                <radialGradient id="innerCircleBg" cx="50%" cy="50%" r="50%">
+                                  <stop offset="0%" stopColor="#ffffff" stopOpacity="1" />
+                                  <stop offset="70%" stopColor="#f8fafc" stopOpacity="0.8" />
+                                  <stop offset="100%" stopColor="#e2e8f0" stopOpacity="0.3" />
+                                </radialGradient>
+                              </defs>
+                              
+                              {/* Telemetry Dial Outer Ring Accent */}
+                              <circle 
+                                className="text-slate-200/40" 
+                                strokeWidth="0.5" 
+                                strokeDasharray="2 3"
+                                stroke="currentColor" 
+                                fill="transparent" 
+                                r="46" 
+                                cx="50" 
+                                cy="50" 
+                              />
+                              
                               {/* Background track circle */}
                               <circle 
                                 className="text-slate-100" 
-                                strokeWidth="8" 
+                                strokeWidth="7" 
                                 stroke="currentColor" 
-                                fill="transparent" 
+                                fill="url(#innerCircleBg)" 
                                 r="40" 
                                 cx="50" 
                                 cy="50" 
                               />
+                              
                               {/* Colored indicator circle */}
                               <circle 
-                                className={`transition-all duration-1000 ${
-                                  journeyDetails.driver_score.score >= 80 ? 'text-emerald-500' : (journeyDetails.driver_score.score >= 60 ? 'text-amber-500' : 'text-rose-500')
-                                }`} 
-                                strokeWidth="8" 
+                                className="transition-all duration-1000" 
+                                strokeWidth="7" 
                                 strokeDasharray="251.2" 
                                 strokeDashoffset={251.2 - (251.2 * journeyDetails.driver_score.score) / 100} 
                                 strokeLinecap="round" 
-                                stroke="currentColor" 
+                                stroke={
+                                  journeyDetails.driver_score.score >= 80 
+                                    ? 'url(#scoreEmerald)' 
+                                    : (journeyDetails.driver_score.score >= 60 ? 'url(#scoreAmber)' : 'url(#scoreRose)')
+                                }
                                 fill="transparent" 
                                 r="40" 
                                 cx="50" 
@@ -1140,7 +1192,7 @@ export default function App() {
                           {/* Quick Stats on events */}
                           <div className="w-full sm:max-w-[210px] space-y-1.5 text-[11px] shrink-0">
                             <div className="flex items-center justify-between gap-2 text-slate-600 p-1 hover:bg-slate-50 rounded-xl transition-all duration-200">
-                              <span className="font-bold text-slate-500 truncate flex items-center gap-2 select-none">
+                              <span className="font-bold text-slate-600 flex items-center gap-2 select-none shrink-0">
                                 <span className={`w-2 h-2 rounded-full shrink-0 ${
                                   journeyDetails.journey.acceleration_events === 0 ? 'bg-emerald-500 shadow-sm shadow-emerald-400' : (journeyDetails.journey.acceleration_events < 4 ? 'bg-amber-500' : 'bg-rose-500')
                                 }`} />
@@ -1151,7 +1203,7 @@ export default function App() {
                               </span>
                             </div>
                             <div className="flex items-center justify-between gap-2 text-slate-600 p-1 hover:bg-slate-50 rounded-xl transition-all duration-200">
-                              <span className="font-bold text-slate-500 truncate flex items-center gap-2 select-none">
+                              <span className="font-bold text-slate-600 flex items-center gap-2 select-none shrink-0">
                                 <span className={`w-2 h-2 rounded-full shrink-0 ${
                                   journeyDetails.journey.brake_events === 0 ? 'bg-emerald-500 shadow-sm shadow-emerald-400' : (journeyDetails.journey.brake_events < 4 ? 'bg-amber-500' : 'bg-rose-500')
                                 }`} />
@@ -1162,7 +1214,7 @@ export default function App() {
                               </span>
                             </div>
                             <div className="flex items-center justify-between gap-2 text-slate-600 p-1 hover:bg-slate-50 rounded-xl transition-all duration-200">
-                              <span className="font-bold text-slate-500 truncate flex items-center gap-2 select-none">
+                              <span className="font-bold text-slate-600 flex items-center gap-2 select-none shrink-0">
                                 <span className={`w-2 h-2 rounded-full shrink-0 ${
                                   journeyDetails.journey.overspeed_count === 0 ? 'bg-emerald-500 shadow-sm shadow-emerald-400' : (journeyDetails.journey.overspeed_count < 2 ? 'bg-amber-500' : 'bg-rose-500')
                                 }`} />
@@ -1173,7 +1225,7 @@ export default function App() {
                               </span>
                             </div>
                             <div className="flex items-center justify-between gap-2 text-slate-600 p-1 hover:bg-slate-50 rounded-xl transition-all duration-200">
-                              <span className="font-bold text-slate-500 truncate flex items-center gap-2 select-none">
+                              <span className="font-bold text-slate-600 flex items-center gap-2 select-none shrink-0">
                                 <span className={`w-2 h-2 rounded-full shrink-0 ${
                                   (journeyDetails.journey.idle_time_min || 0) < 10 ? 'bg-emerald-500 shadow-sm shadow-emerald-400' : ((journeyDetails.journey.idle_time_min || 0) < 25 ? 'bg-amber-500' : 'bg-rose-500')
                                 }`} />
@@ -1440,6 +1492,48 @@ export default function App() {
                             <p className={`text-base font-black font-outfit ${journeyDetails.journey.dallas_temp_celsius > 100.0 ? 'text-rose-700' : 'text-slate-800'}`}>
                               {(journeyDetails.journey.dallas_temp_celsius || 0).toFixed(1)}°C
                             </p>
+                          </div>
+                        </div>
+
+                        {/* Component Wear Health Scores Grid */}
+                        <div className="border-t border-slate-100 pt-4 mt-1 mb-4 space-y-3">
+                          <span className="text-[9px] text-slate-400 font-bold tracking-wide uppercase block">Component Wear Health Scores</span>
+                          <div className="grid grid-cols-1 gap-2.5">
+                            {(() => {
+                              const scores = journeyDetails.maintenance?.health_scores || {
+                                brake: 100, clutch: 100, tire: 100, battery: 100, engine: 100
+                              };
+                              return Object.entries(scores).map(([comp, val]) => {
+                                const scoreVal = val ?? 100;
+                                const isCrit = scoreVal < 10;
+                                const isWarn = scoreVal >= 10 && scoreVal < 30;
+                                
+                                let colorClass = "from-emerald-500 to-teal-500";
+                                let textClass = "text-emerald-600 bg-emerald-50 border-emerald-100";
+                                if (isCrit) {
+                                  colorClass = "from-rose-500 to-red-600";
+                                  textClass = "text-rose-600 bg-rose-50 border-rose-100";
+                                } else if (isWarn) {
+                                  colorClass = "from-amber-500 to-orange-500";
+                                  textClass = "text-amber-600 bg-amber-50 border-amber-100";
+                                }
+                                
+                                return (
+                                  <div key={comp} className="flex items-center justify-between gap-3 text-xs font-semibold">
+                                    <span className="w-16 capitalize text-slate-600 truncate">{comp}</span>
+                                    <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden relative shadow-inner">
+                                      <div 
+                                        className={`h-full rounded-full bg-gradient-to-r ${colorClass} transition-all duration-1000`} 
+                                        style={{ width: `${Math.max(0, Math.min(100, scoreVal))}%` }}
+                                      ></div>
+                                    </div>
+                                    <span className={`text-[9.5px] font-bold font-outfit px-1.5 py-0.5 rounded border select-none shrink-0 w-11 text-center ${textClass}`}>
+                                      {scoreVal.toFixed(0)}%
+                                    </span>
+                                  </div>
+                                );
+                              });
+                            })()}
                           </div>
                         </div>
                       </div>

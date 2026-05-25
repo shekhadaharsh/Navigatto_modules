@@ -12,7 +12,7 @@ from database.db import Base, engine
 
 # ── Import Routers ──
 from driver_module.routes import router as driver_router
-# from fuel_module.routes import router as fuel_router          # Person 2
+from fuel_module.routes import router as fuel_router
 from maintenance_module.routes import router as maint_router
 
 # ─────────────────────────────────────────
@@ -48,7 +48,7 @@ app.add_middleware(
 # Include Routers
 # ─────────────────────────────────────────
 app.include_router(driver_router)
-# app.include_router(fuel_router)       # uncomment when Person 2 is ready
+app.include_router(fuel_router)
 app.include_router(maint_router)
 
 
