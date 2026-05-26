@@ -371,11 +371,12 @@ export default function App() {
   
   // --- LOADERS / CONTROL ---
   const [searchTerm, setSearchTerm] = useState('');
+  const [tripSearchTerm, setTripSearchTerm] = useState('');
   const [isLoadingDrivers, setIsLoadingDrivers] = useState(true);
   const [isLoadingJourneys, setIsLoadingJourneys] = useState(false);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [isRecomputing, setIsRecomputing] = useState(false);
-  const [isUsingMock, setIsUsingMock] = useState(true);
+  const [isUsingMock, setIsUsingMock] = useState(false);
 
   // --- PREDICTIVE VEHICLE MAINTENANCE SYSTEM STATES ---
   const [isMaintDialogOpen, setIsMaintDialogOpen] = useState(false);
@@ -725,6 +726,11 @@ export default function App() {
 
   const activeDriver = drivers.find(d => d.driver_id === activeDriverId) || MOCK_DRIVERS[0];
 
+  const filteredJourneys = journeys.filter(j => 
+    (j.journey_id || '').toLowerCase().includes(tripSearchTerm.toLowerCase()) ||
+    (j.route_type || '').toLowerCase().includes(tripSearchTerm.toLowerCase())
+  );
+
   // Helper colors for Score pill badges
   const getScoreColorClass = (score) => {
     if (score >= 80) return 'bg-emerald-50 text-emerald-700 border border-emerald-200';
@@ -944,9 +950,21 @@ export default function App() {
             </div>
 
             {/* Past Journeys Header */}
-            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between shrink-0">
-              <span className="text-xs font-bold text-slate-900 font-outfit tracking-wide uppercase">Journey History</span>
-              <span className="text-[10px] px-2 py-0.5 bg-slate-200/60 text-slate-600 font-bold rounded-full">{journeys.length} Records</span>
+            <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-3 shrink-0">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-900 font-outfit tracking-wide uppercase">Journey History</span>
+                <span className="text-[10px] px-2 py-0.5 bg-slate-200/60 text-slate-600 font-bold rounded-full">{filteredJourneys.length} Records</span>
+              </div>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Search trip ID or route..."
+                  value={tripSearchTerm}
+                  onChange={(e) => setTripSearchTerm(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all font-medium placeholder-slate-400 shadow-sm"
+                />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
+              </div>
             </div>
 
             {/* Journeys List */}
@@ -956,10 +974,10 @@ export default function App() {
                   <RefreshCw className="w-5 h-5 text-brand-500 animate-spin" />
                   <span className="text-xs text-slate-400 font-medium">Retrieving journeys...</span>
                 </div>
-              ) : journeys.length === 0 ? (
-                <div className="text-center p-6 text-xs text-slate-400 font-medium">No recorded journeys found.</div>
+              ) : filteredJourneys.length === 0 ? (
+                <div className="text-center p-6 text-xs text-slate-400 font-medium">No matching journeys found.</div>
               ) : (
-                journeys.map(j => {
+                filteredJourneys.map(j => {
                   const isActive = j.journey_id === activeJourneyId;
                   const hasAlert = j.fuel_theft_detected || j.maintenance_critical;
                   
@@ -1099,7 +1117,7 @@ export default function App() {
                     {/* -------------------- CARD 1: DRIVER SCORE CARD -------------------- */}
                     <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-premium flex flex-col justify-between hover:shadow-premium-lg transition-shadow">
                       <div>
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-3.5 mb-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3.5 mb-4">
                           <h3 className="text-sm font-extrabold text-slate-800 font-outfit tracking-wide flex items-center gap-2 uppercase">
                             <Gauge className="w-4.5 h-4.5 text-brand-500" /> Driver Safety Score
                           </h3>
@@ -1350,8 +1368,8 @@ export default function App() {
 
                     {/* -------------------- CARD 3: EXPECTED FUEL CHART -------------------- */}
                     <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-premium flex flex-col justify-between hover:shadow-premium-lg transition-shadow">
-                      <div>
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-3.5 mb-4">
+                      <div className="flex flex-col flex-1">
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3.5 mb-4">
                           <h3 className="text-sm font-extrabold text-slate-800 font-outfit tracking-wide flex items-center gap-2 uppercase">
                             <Activity className="w-4.5 h-4.5 text-brand-500" /> Predictive Expected Fuel
                           </h3>
@@ -1363,40 +1381,36 @@ export default function App() {
                             Variance: {journeyDetails.expected_fuel.variance_pct > 0 ? '+' : ''}{(journeyDetails.expected_fuel.variance_pct || 0).toFixed(1)}%
                           </span>
                         </div>
-
                         {/* Side-by-side Recharts bar chart */}
-                        <div className="h-44 w-full mt-3">
+                        <div className="flex-1 min-h-[150px] w-full mt-3">
                           <ResponsiveContainer width="100%" height="100%">
                             <BarChart
                               data={[
                                 {name: 'Predicted Expected', fuel: journeyDetails.expected_fuel.expected_liters, fill: '#3b82f6'},
                                 {name: 'Actual Consumed', fuel: journeyDetails.expected_fuel.actual_liters, fill: journeyDetails.fuel_theft.detected ? '#f43f5e' : '#10b981'}
                               ]}
-                              margin={{ top: 10, right: 10, left: -25, bottom: 0 }}
-                              barSize={40}
+                              margin={{ top: 20, right: 15, left: -20, bottom: 5 }}
+                              barSize={48}
                             >
-                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                              <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
-                              <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} />
-                              <Tooltip cursor={{fill: 'transparent'}} contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '11px', fontWeight: 'bold' }} />
-                              <Bar dataKey="fuel" radius={[8, 8, 0, 0]}>
-                                {/* Map fills dynamically */}
-                                <svg>
-                                  <defs>
-                                    <linearGradient id="blueGrad" x1="0" y1="0" x2="0" y2="1">
-                                      <stop offset="0%" stopColor="#3b82f6" />
-                                      <stop offset="100%" stopColor="#2563eb" />
-                                    </linearGradient>
-                                    <linearGradient id="greenGrad" x1="0" y1="0" x2="0" y2="1">
-                                      <stop offset="0%" stopColor="#10b981" />
-                                      <stop offset="100%" stopColor="#059669" />
-                                    </linearGradient>
-                                    <linearGradient id="redGrad" x1="0" y1="0" x2="0" y2="1">
-                                      <stop offset="0%" stopColor="#f43f5e" />
-                                      <stop offset="100%" stopColor="#dc2626" />
-                                    </linearGradient>
-                                  </defs>
-                                </svg>
+                              <defs>
+                                <linearGradient id="blueGrad" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.9}/>
+                                  <stop offset="100%" stopColor="#2563eb" stopOpacity={1}/>
+                                </linearGradient>
+                                <linearGradient id="greenGrad" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#10b981" stopOpacity={0.9}/>
+                                  <stop offset="100%" stopColor="#059669" stopOpacity={1}/>
+                                </linearGradient>
+                                <linearGradient id="redGrad" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor="#f43f5e" stopOpacity={0.9}/>
+                                  <stop offset="100%" stopColor="#dc2626" stopOpacity={1}/>
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.6} />
+                              <XAxis dataKey="name" stroke="#94a3b8" fontSize={11} fontWeight={700} tickLine={false} axisLine={false} dy={10} />
+                              <YAxis stroke="#94a3b8" fontSize={11} fontWeight={600} tickLine={false} axisLine={false} dx={-5} />
+                              <Tooltip cursor={{fill: '#f8fafc'}} contentStyle={{ borderRadius: '16px', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px', fontWeight: 'bold' }} />
+                              <Bar dataKey="fuel" radius={[6, 6, 0, 0]} background={{ fill: '#f1f5f9', radius: [6, 6, 0, 0] }} animationDuration={1500}>
                                 {
                                   [
                                     {fill: 'url(#blueGrad)'},
@@ -1412,7 +1426,7 @@ export default function App() {
                       </div>
 
                       {/* Model parameters explanation */}
-                      <div className="bg-slate-50 rounded-2xl border border-slate-200/50 p-4 mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-3 text-[11px] font-semibold text-slate-500">
+                      <div className="bg-slate-50 rounded-2xl border border-slate-200/50 p-4 mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-3 text-[11px] font-semibold text-slate-500">
                         <div>
                           <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Route & Idle Adjustments</p>
                           <div className="space-y-1">
@@ -1469,7 +1483,7 @@ export default function App() {
                         </div>
 
                         {/* Sensory parameters diagnostics */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-4 mb-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-4 mb-4">
                           <div className={`p-3 rounded-2xl border transition-all ${
                             journeyDetails.journey.external_voltage < 11.5 ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200/40'
                           }`}>

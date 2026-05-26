@@ -385,31 +385,8 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
         variance_pct = round(((actual_fuel - expected_fuel) / expected_fuel) * 100, 2)
 
     # ── Maintenance signals (Person 3 - Integrated Real DB Calculations) ──
-    # Run the wear engines dynamically to calculate wear based on existing raw telemetry
-    reg_no = db.execute(
-        text("SELECT reg_no FROM vehicles WHERE id = :vid"),
-        {"vid": trip.vehicle_id}
-    ).scalar() or trip.vehicle_id
-    
-    try:
-        from maintenance_module.engines import (
-            ensure_wear_state_initialized,
-            process_vehicle_brakes,
-            process_vehicle_clutch,
-            process_vehicle_tires,
-            process_vehicle_battery,
-            process_vehicle_engine,
-            run_alert_check
-        )
-        ensure_wear_state_initialized(db, trip.vehicle_id)
-        process_vehicle_brakes(db, trip.vehicle_id, reg_no)
-        process_vehicle_clutch(db, trip.vehicle_id, reg_no)
-        process_vehicle_tires(db, trip.vehicle_id, reg_no)
-        process_vehicle_battery(db, trip.vehicle_id, reg_no)
-        process_vehicle_engine(db, trip.vehicle_id, reg_no)
-        run_alert_check(db)
-    except Exception as e:
-        print(f"Error executing wear engines dynamically in details: {e}")
+    # Note: Wear engine simulations should run in a background task, not synchronously!
+    # They have been disabled here to prevent excessive API load times.
 
     # Fetch real sensor telemetry for this trip
     telemetry_row = db.execute(
