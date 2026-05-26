@@ -18,6 +18,22 @@ class PenaltyBreakdown(BaseModel):
 
 
 # ─────────────────────────────────────────
+# DUAL SCORE COMPARISON SCHEMAS
+# ─────────────────────────────────────────
+class ScoreSide(BaseModel):
+    final_score: float
+    risk_level:  str
+    penalties:   PenaltyBreakdown
+    confidence:  Optional[float] = None  # ML only
+
+class ScoreComparison(BaseModel):
+    rule_based:       ScoreSide
+    ml:               ScoreSide
+    score_difference: float
+    active_method:    str
+
+
+# ─────────────────────────────────────────
 # TRIP SCORE RESPONSE
 # Score result for a single trip
 # Used in: GET /drivers/{driver_id}/trips/{trip_id}/score
@@ -47,6 +63,11 @@ class TripScoreResponse(BaseModel):
     penalties:        PenaltyBreakdown
     final_score:      float
     risk_level:       str   # Low Risk / Mild Risk / Poor Classification / High Risk
+
+    # NEW optional fields for dual scoring comparison
+    scoring_method:   str            = "Rule-Based"
+    ml_confidence:    Optional[float] = None
+    score_comparison: Optional[ScoreComparison] = None
 
 
 # ─────────────────────────────────────────
@@ -84,6 +105,8 @@ class DriverSummary(BaseModel):
     avg_score:          float
     risk_level:         str
     total_distance:     float   # total km driven
+    ml_score:           Optional[float] = None
+    rule_based_score:   Optional[float] = None
 
 
 # ─────────────────────────────────────────
