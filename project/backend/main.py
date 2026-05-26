@@ -20,6 +20,39 @@ from maintenance_module.routes import router as maint_router
 # ─────────────────────────────────────────
 Base.metadata.create_all(bind=engine)
 
+import os
+import asyncio
+from contextlib import asynccontextmanager
+from sqlalchemy import text
+from database.db import SessionLocal
+
+# Load setting from environment (defaulting to 30)
+REPLAY_INTERVAL = int(os.getenv("TELEMETRY_REPLAY_INTERVAL_SEC", "30"))
+
+# ─────────────────────────────────────────
+# Background Task
+# ─────────────────────────────────────────
+async def replay_telemetry_task():
+    print(f"▶ Starting background telemetry replay task (Interval: {REPLAY_INTERVAL}s)...")
+    while True:
+        try:
+            db = SessionLocal()
+            db.execute(text("EXEC ReplayLiveTelemetry;"))
+            db.commit()
+            db.close()
+            print(f"[{asyncio.get_running_loop().time()}] Executed ReplayLiveTelemetry")
+        except Exception as e:
+            print(f"Error running replay telemetry: {e}")
+        await asyncio.sleep(REPLAY_INTERVAL)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    task = asyncio.create_task(replay_telemetry_task())
+    yield
+    # Shutdown
+    task.cancel()
+
 # ─────────────────────────────────────────
 # App Init
 # ─────────────────────────────────────────
@@ -27,6 +60,7 @@ app = FastAPI(
     title="FleetIQ API",
     description="Unified Fleet Intelligence Backend",
     version="1.0.0",
+    lifespan=lifespan
 )
 
 # ─────────────────────────────────────────
