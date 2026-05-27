@@ -25,33 +25,92 @@ import asyncio
 from contextlib import asynccontextmanager
 from sqlalchemy import text
 from database.db import SessionLocal
+from fastapi import APIRouter
 
-# Load setting from environment (defaulting to 30)
+# Load settings from environment
 REPLAY_INTERVAL = int(os.getenv("TELEMETRY_REPLAY_INTERVAL_SEC", "30"))
+ENABLE_MANUAL_REPLAY_CONTROL = os.getenv("ENABLE_MANUAL_REPLAY_CONTROL", "false").lower() == "true"
+
+RESET_TIME = "2024-03-15 05:59:30"
 
 # ─────────────────────────────────────────
-# Background Task
+# Singleton Replay Manager
 # ─────────────────────────────────────────
-async def replay_telemetry_task():
-    print(f"▶ Starting background telemetry replay task (Interval: {REPLAY_INTERVAL}s)...")
-    while True:
+class ReplayManager:
+    def __init__(self):
+        self._task = None
+        self._running = False
+        self._lock = asyncio.Lock()
+
+    @property
+    def is_running(self):
+        return self._running and self._task is not None and not self._task.done()
+
+    def _ensure_null_safe(self, db):
+        result = db.execute(text("SELECT last_historical_time FROM dbo.replay_tracker WHERE id = 1")).fetchone()
+        if result is None or result[0] is None:
+            db.execute(text(f"UPDATE dbo.replay_tracker SET last_historical_time = '{RESET_TIME}' WHERE id = 1"))
+            db.commit()
+            print("[ReplayManager] NULL detected — reset last_historical_time to default")
+
+    async def _loop(self):
+        print(f"▶ Replay loop started (Interval: {REPLAY_INTERVAL}s)...")
+        self._running = True
+        while self._running:
+            try:
+                db = SessionLocal()
+                self._ensure_null_safe(db)
+                db.execute(text("EXEC ReplayLiveTelemetry;"))
+                db.commit()
+                db.close()
+                print(f"[ReplayManager] Executed ReplayLiveTelemetry")
+            except Exception as e:
+                print(f"[ReplayManager] Error: {e}")
+            await asyncio.sleep(REPLAY_INTERVAL)
+
+    async def start(self):
+        async with self._lock:
+            if self.is_running:
+                return {"status": "already_running"}
+            self._task = asyncio.create_task(self._loop())
+            return {"status": "started"}
+
+    async def stop(self):
+        async with self._lock:
+            self._running = False
+            if self._task:
+                self._task.cancel()
+                self._task = None
+            return {"status": "stopped"}
+
+    async def fresh_start(self):
+        await self.stop()
         try:
             db = SessionLocal()
-            db.execute(text("EXEC ReplayLiveTelemetry;"))
+            db.execute(text("DELETE FROM dbo.fmc_raw_packets;"))
+            db.execute(text("DELETE FROM dbo.journey_fuel_logs1;"))
+            db.execute(text(f"UPDATE dbo.replay_tracker SET last_historical_time = '{RESET_TIME}' WHERE id = 1;"))
             db.commit()
             db.close()
-            print(f"[{asyncio.get_running_loop().time()}] Executed ReplayLiveTelemetry")
+            print("[ReplayManager] Fresh start — tables cleared, tracker reset")
         except Exception as e:
-            print(f"Error running replay telemetry: {e}")
-        await asyncio.sleep(REPLAY_INTERVAL)
+            print(f"[ReplayManager] Fresh start DB error: {e}")
+            return {"status": "error", "detail": str(e)}
+        return await self.start()
 
+replay_manager = ReplayManager()
+
+# ─────────────────────────────────────────
+# Lifespan
+# ─────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
-    task = asyncio.create_task(replay_telemetry_task())
+    if not ENABLE_MANUAL_REPLAY_CONTROL:
+        await replay_manager.start()
+    else:
+        print("[ReplayManager] Manual control mode — waiting for UI trigger")
     yield
-    # Shutdown
-    task.cancel()
+    await replay_manager.stop()
 
 # ─────────────────────────────────────────
 # App Init
@@ -85,6 +144,26 @@ app.include_router(driver_router)
 app.include_router(fuel_router)
 app.include_router(maint_router)
 
+
+
+# ─────────────────────────────────────────
+# Replay Control Endpoints
+# ─────────────────────────────────────────
+@app.post("/replay/start", tags=["Replay"])
+async def replay_start():
+    return await replay_manager.start()
+
+@app.post("/replay/fresh-start", tags=["Replay"])
+async def replay_fresh_start():
+    return await replay_manager.fresh_start()
+
+@app.get("/replay/status", tags=["Replay"])
+async def replay_status():
+    return {"running": replay_manager.is_running, "manual_control": ENABLE_MANUAL_REPLAY_CONTROL}
+
+@app.post("/replay/stop", tags=["Replay"])
+async def replay_stop():
+    return await replay_manager.stop()
 
 # ─────────────────────────────────────────
 # Health Check
