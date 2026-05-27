@@ -80,12 +80,11 @@ def _dual_score_for_trip(trip: Trip) -> dict:
 
 def _get_active_score_result(dual_result: dict) -> dict:
     """
-    Retrieves the score result node designated as active by USE_ML_MODEL.
+    Retrieves the score result node designated as active.
+    Per client requirements, the active score served for general display
+    is always the Geotab event-count Rule-Based score.
     """
-    if USE_ML_MODEL:
-        return dual_result["ml"]
-    else:
-        return dual_result["rule_based"]
+    return dual_result["rule_based"]
 
 # ─────────────────────────────────────────
 # HELPER
@@ -134,7 +133,7 @@ def get_all_drivers(db: Session = Depends(get_db)):
         avg_ml = round(sum(ml_scores) / len(ml_scores), 2) if ml_scores else 0.0
         avg_rule = round(sum(rule_scores) / len(rule_scores), 2) if rule_scores else 0.0
         
-        active_score = avg_ml if USE_ML_MODEL else avg_rule
+        active_score = avg_rule
         
         # Get driver name from Driver table in DB
         driver_obj = db.query(Driver).filter(Driver.driver_id == row.driver_id).first()
@@ -207,7 +206,7 @@ def get_leaderboard(db: Session = Depends(get_db)):
         avg_ml = round(sum(ml_scores) / len(ml_scores), 2) if ml_scores else 0.0
         avg_rule = round(sum(rule_scores) / len(rule_scores), 2) if rule_scores else 0.0
         
-        active_score = avg_ml if USE_ML_MODEL else avg_rule
+        active_score = avg_rule
         
         scored.append({
             "driver_id":   row.driver_id,
@@ -458,6 +457,13 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
         "risk_level":  dual["ml"]["risk_level"],
         "penalties":   dual["ml"]["penalties"],
         "confidence":  dual["ml"]["ml_confidence"],
+        "component_scores": {
+            "accel_score":     dual["ml"]["accel_score"],
+            "braking_score":   dual["ml"]["braking_score"],
+            "speeding_score":  dual["ml"]["speeding_score"],
+            "cornering_score": dual["ml"]["cornering_score"],
+            "idle_score":      dual["ml"]["idle_score"],
+        }
     }
     score_comp = {
         "rule_based": rule_side,

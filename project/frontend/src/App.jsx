@@ -351,7 +351,7 @@ const getDriverInsights = (details) => {
   if (brakePenalty > 2 || brakeEvents > 3) {
     insights.push({
       type: 'braking',
-      text: 'Maintain a 3-second safety gap to avoid harsh braking events, preserving brake pad life and passenger comfort.',
+      text: 'Maintain a 3-second safety gap to avoid harsh braking events, preserving brake pad life and securing fleet cargo integrity.',
       icon: 'ShieldAlert',
       color: 'text-amber-600 bg-amber-50 border-amber-100',
       chipLabel: '🔧 WEAR WARNING',
@@ -1292,7 +1292,7 @@ export default function App() {
                                 style={{ transformStyle: 'preserve-3d', minHeight: '480px' }}
                               >
                                 {/* FRONT FACE */}
-                                <div className="absolute inset-0 w-full h-full backface-hidden bg-white rounded-3xl border border-slate-200/80 p-6 shadow-premium hover:shadow-premium-lg transition-all flex flex-col justify-between z-10" style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}>
+                                <div className="absolute inset-0 w-full h-full backface-hidden bg-white rounded-3xl border border-slate-200/80 p-6 shadow-premium hover:shadow-premium-lg transition-all flex flex-col justify-start gap-3 z-10" style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}>
                                   <div>
                                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3.5 mb-4">
                                       <h3 className="text-sm font-extrabold text-slate-800 font-outfit tracking-wide flex items-center gap-2 uppercase">
@@ -1490,7 +1490,7 @@ export default function App() {
                                     style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
                                   >
                                     <div>
-                                      <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                                      <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4 shrink-0">
                                         <h3 className="text-sm font-extrabold text-slate-800 font-outfit tracking-wide flex items-center gap-2 uppercase">
                                           <Gauge className="w-4.5 h-4.5 text-violet-500 animate-pulse" /> Model Dual Comparison
                                         </h3>
@@ -1500,7 +1500,7 @@ export default function App() {
                                       </div>
 
                                       {/* Side-by-side Score blocks */}
-                                      <div className="grid grid-cols-2 gap-4 mb-4">
+                                      <div className="grid grid-cols-2 gap-4 mb-4 shrink-0">
                                         {/* Rule-Based Block */}
                                         <div className="bg-slate-50/70 rounded-2xl p-3 border border-slate-200/40 relative overflow-hidden">
                                           <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mb-1">📐 Rule-Based</span>
@@ -1531,7 +1531,7 @@ export default function App() {
                                       </div>
 
                                       {/* Score gap badge & ML confidence */}
-                                      <div className="space-y-3.5 mb-4">
+                                      <div className="space-y-3.5 mb-4 shrink-0">
                                         {/* Score Difference Gap */}
                                         {(() => {
                                           const diff = journeyDetails.driver_score.score_comparison.score_difference;
@@ -1557,42 +1557,44 @@ export default function App() {
                                       </div>
                                     </div>
 
-                                    {/* Penalty comparative bars */}
-                                    <div className="space-y-2 border-t border-slate-100 pt-3">
-                                      <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">
-                                        Component Penalties (📐 Rule vs 🤖 ML)
+                                    {/* Category Safety Grades / Scores */}
+                                    <div className="space-y-2 border-t border-slate-100 pt-3 flex-1 flex flex-col justify-center">
+                                      <span className="text-[9.5px] text-slate-400 font-extrabold tracking-wide uppercase block select-none">
+                                        Safety Component Analysis (ML Context-Aware)
                                       </span>
-                                      <div className="space-y-2 pr-1">
+                                      <div className="space-y-2.5 pr-1">
                                         {(() => {
-                                          const rulePenalties = journeyDetails.driver_score.score_comparison.rule_based.penalties;
-                                          const mlPenalties = journeyDetails.driver_score.score_comparison.ml.penalties;
-                                          const comps = [
-                                            { name: "Acceleration", rule: rulePenalties.accel_penalty, ml: mlPenalties.accel_penalty },
-                                            { name: "Braking", rule: rulePenalties.braking_penalty, ml: mlPenalties.braking_penalty },
-                                            { name: "Speeding", rule: rulePenalties.speeding_penalty, ml: mlPenalties.speeding_penalty },
-                                            { name: "Cornering", rule: rulePenalties.cornering_penalty, ml: mlPenalties.cornering_penalty },
-                                            { name: "Idling", rule: rulePenalties.idle_penalty, ml: mlPenalties.idle_penalty }
+                                          const compScores = journeyDetails?.driver_score?.score_comparison?.ml?.component_scores || {};
+                                          const cats = [
+                                            { name: "Acceleration", val: compScores.accel_score ?? 100.0, icon: <TrendingUp className="w-4 h-4 shrink-0" /> },
+                                            { name: "Braking", val: compScores.braking_score ?? 100.0, icon: <ShieldAlert className="w-4 h-4 shrink-0" /> },
+                                            { name: "Speeding", val: compScores.speeding_score ?? 100.0, icon: <Gauge className="w-4 h-4 shrink-0" /> },
+                                            { name: "Cornering", val: compScores.cornering_score ?? 100.0, icon: <Compass className="w-4 h-4 shrink-0" /> },
+                                            { name: "Idling", val: compScores.idle_score ?? 100.0, icon: <Clock className="w-4 h-4 shrink-0" /> }
                                           ];
 
-                                          return comps.map(c => {
-                                            const maxVal = Math.max(0.1, c.rule, c.ml);
+                                          return cats.map(c => {
+                                            let barColor = "bg-emerald-500";
+                                            let textColor = "text-emerald-700 bg-emerald-50 border-emerald-100";
+                                            if (c.val < 60) {
+                                              barColor = "bg-rose-500";
+                                              textColor = "text-rose-700 bg-rose-50 border-rose-100";
+                                            } else if (c.val < 80) {
+                                              barColor = "bg-amber-500";
+                                              textColor = "text-amber-700 bg-amber-50 border-amber-100";
+                                            }
                                             return (
-                                              <div key={c.name} className="space-y-0.5 text-[10.5px] font-semibold text-slate-500">
-                                                <div className="flex justify-between">
-                                                  <span>{c.name}</span>
-                                                  <span className="text-[10px] font-bold">
-                                                    Rule: <span className="text-slate-600 font-black">{c.rule}</span> | ML: <span className="text-violet-600 font-black">{c.ml}</span>
+                                              <div key={c.name} className="flex flex-col gap-0.5 text-[11px]">
+                                                <div className="flex items-center justify-between font-bold">
+                                                  <span className="text-slate-500 flex items-center gap-1.5 min-w-0 truncate">
+                                                    {c.icon} {c.name}
+                                                  </span>
+                                                  <span className={`text-[10px] px-1.5 py-0.2 border rounded-md font-extrabold ${textColor}`}>
+                                                    {c.val.toFixed(0)}%
                                                   </span>
                                                 </div>
-                                                <div className="space-y-0.5">
-                                                  {/* Rule-Based (Slate) */}
-                                                  <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
-                                                    <div className="h-full bg-slate-400 rounded-full" style={{ width: `${(c.rule / maxVal) * 100}%` }}></div>
-                                                  </div>
-                                                  {/* ML (Violet) */}
-                                                  <div className="h-1 bg-violet-50 rounded-full overflow-hidden">
-                                                    <div className="h-full bg-violet-500 rounded-full" style={{ width: `${(c.ml / maxVal) * 100}%` }}></div>
-                                                  </div>
+                                                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden w-full">
+                                                  <div className={`h-full ${barColor} rounded-full transition-all duration-500`} style={{ width: `${c.val}%` }}></div>
                                                 </div>
                                               </div>
                                             );
