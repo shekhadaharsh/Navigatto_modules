@@ -14,10 +14,12 @@ Endpoints:
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
+import os
 
 from database.db import get_db
 from driver_module.model import Trip, Driver, Vehicle
 from driver_module.scorer import calculate_trip_score, get_risk_level
+from driver_module.ml_scorer import calculate_trip_score_ml
 from driver_module.schema import (
     DriverSummary,
     DriverDetail,
@@ -26,10 +28,61 @@ from driver_module.schema import (
     PenaltyBreakdown,
     LeaderboardItem,
     LeaderboardResponse,
+    ScoreSide,
+    ScoreComparison,
 )
 
 router = APIRouter(prefix="/drivers", tags=["Driver Behaviour"])
 
+# ── Feature Flag & In-Memory RAM Cache (No DB changes) ──────────
+USE_ML_MODEL = os.getenv("USE_ML_MODEL", "true").lower() in ("true", "1", "yes")
+_score_cache: dict = {}
+
+def _dual_score_for_trip(trip: Trip) -> dict:
+    """
+    Computes both rule-based and ML safety scores for a trip.
+    Utilizes in-memory caching to guarantee near 0ms execution on repeating requests.
+    """
+    if trip.trip_id in _score_cache:
+        return _score_cache[trip.trip_id]
+        
+    rule_result = calculate_trip_score(
+        accel_events=trip.accel_events or 0,
+        brake_events=trip.brake_events or 0,
+        over_speed_count=trip.over_speed_count or 0,
+        cornering_events=trip.cornering_events or 0,
+        idle_time_min=trip.idle_time_min or 0.0,
+        trip_duration_min=trip.trip_duration_min or 1.0,
+        distance_km=trip.distance_km or 1.0,
+    )
+    
+    ml_result = calculate_trip_score_ml(
+        accel_events=trip.accel_events or 0,
+        brake_events=trip.brake_events or 0,
+        over_speed_count=trip.over_speed_count or 0,
+        cornering_events=trip.cornering_events or 0,
+        idle_time_min=trip.idle_time_min or 0.0,
+        trip_duration_min=trip.trip_duration_min or 1.0,
+        distance_km=trip.distance_km or 1.0,
+        route_type=trip.route_type or "Mixed",
+        avg_speed_kmh=trip.avg_speed_kmh or 0.0,
+        max_speed_kmh=trip.max_speed_kmh or 0.0,
+        num_stops=trip.num_stops or 0,
+        avg_engine_rpm=trip.avg_engine_rpm or 0.0,
+    )
+    
+    result = {"rule_based": rule_result, "ml": ml_result}
+    _score_cache[trip.trip_id] = result
+    return result
+
+def _get_active_score_result(dual_result: dict) -> dict:
+    """
+    Retrieves the score result node designated as active by USE_ML_MODEL.
+    """
+    if USE_ML_MODEL:
+        return dual_result["ml"]
+    else:
+        return dual_result["rule_based"]
 
 # ─────────────────────────────────────────
 # HELPER
@@ -40,16 +93,9 @@ def _avg_score_for_trips(trips: list[Trip]) -> float:
         return 0.0
     scores = []
     for t in trips:
-        result = calculate_trip_score(
-            accel_events=t.accel_events or 0,
-            brake_events=t.brake_events or 0,
-            over_speed_count=t.over_speed_count or 0,
-            cornering_events=t.cornering_events or 0,
-            idle_time_min=t.idle_time_min or 0.0,
-            trip_duration_min=t.trip_duration_min or 1.0,
-            distance_km=t.distance_km or 1.0,
-        )
-        scores.append(result["final_score"])
+        dual = _dual_score_for_trip(t)
+        active = _get_active_score_result(dual)
+        scores.append(active["final_score"])
     return round(sum(scores) / len(scores), 2)
 
 
@@ -73,7 +119,19 @@ def get_all_drivers(db: Session = Depends(get_db)):
     result = []
     for row in rows:
         trips = db.query(Trip).filter(Trip.driver_id == row.driver_id).order_by(Trip.trip_start.desc()).all()
-        avg_score = _avg_score_for_trips(trips)
+        
+        # Calculate both ML and Rule-Based averages
+        ml_scores = []
+        rule_scores = []
+        for t in trips:
+            dual = _dual_score_for_trip(t)
+            ml_scores.append(dual["ml"]["final_score"])
+            rule_scores.append(dual["rule_based"]["final_score"])
+            
+        avg_ml = round(sum(ml_scores) / len(ml_scores), 2) if ml_scores else 0.0
+        avg_rule = round(sum(rule_scores) / len(rule_scores), 2) if rule_scores else 0.0
+        
+        active_score = avg_ml if USE_ML_MODEL else avg_rule
         
         # Get driver name from Driver table in DB
         driver_obj = db.query(Driver).filter(Driver.driver_id == row.driver_id).first()
@@ -103,9 +161,11 @@ def get_all_drivers(db: Session = Depends(get_db)):
                 total_odometer_km=total_odometer,
                 engine_total_hours=engine_hours,
                 total_trips=row.total_trips,
-                avg_score=avg_score,
-                risk_level=get_risk_level(avg_score),
+                avg_score=active_score,
+                risk_level=get_risk_level(active_score),
                 total_distance=round(row.total_distance or 0.0, 2),
+                ml_score=avg_ml,
+                rule_based_score=avg_rule,
             )
         )
 
@@ -132,12 +192,27 @@ def get_leaderboard(db: Session = Depends(get_db)):
     scored = []
     for row in rows:
         trips = db.query(Trip).filter(Trip.driver_id == row.driver_id).all()
-        avg_score = _avg_score_for_trips(trips)
+        
+        # Calculate both ML and Rule-Based averages for comparative column display
+        ml_scores = []
+        rule_scores = []
+        for t in trips:
+            dual = _dual_score_for_trip(t)
+            ml_scores.append(dual["ml"]["final_score"])
+            rule_scores.append(dual["rule_based"]["final_score"])
+            
+        avg_ml = round(sum(ml_scores) / len(ml_scores), 2) if ml_scores else 0.0
+        avg_rule = round(sum(rule_scores) / len(rule_scores), 2) if rule_scores else 0.0
+        
+        active_score = avg_ml if USE_ML_MODEL else avg_rule
+        
         scored.append({
             "driver_id":   row.driver_id,
-            "avg_score":   avg_score,
-            "risk_level":  get_risk_level(avg_score),
+            "avg_score":   active_score,
+            "risk_level":  get_risk_level(active_score),
             "total_trips": row.total_trips,
+            "ml_score":    avg_ml,
+            "rule_based_score": avg_rule,
         })
 
     scored.sort(key=lambda x: x["avg_score"], reverse=True)
@@ -187,19 +262,11 @@ def get_driver_detail(driver_id: str, db: Session = Depends(get_db)):
     total_trips    = len(trips)
     total_distance = sum(t.distance_km or 0.0 for t in trips)
 
-    # Score every trip
-    all_results = [
-        calculate_trip_score(
-            accel_events=t.accel_events or 0,
-            brake_events=t.brake_events or 0,
-            over_speed_count=t.over_speed_count or 0,
-            cornering_events=t.cornering_events or 0,
-            idle_time_min=t.idle_time_min or 0.0,
-            trip_duration_min=t.trip_duration_min or 1.0,
-            distance_km=t.distance_km or 1.0,
-        )
-        for t in trips
-    ]
+    # Score every trip using active scoring method
+    all_results = []
+    for t in trips:
+        dual = _dual_score_for_trip(t)
+        all_results.append(_get_active_score_result(dual))
 
     def _avg(key): return round(sum(r[key] for r in all_results) / total_trips, 2)
 
@@ -251,15 +318,8 @@ def get_driver_trips(driver_id: str, db: Session = Depends(get_db)):
 
     result = []
     for t in trips:
-        scored = calculate_trip_score(
-            accel_events=t.accel_events or 0,
-            brake_events=t.brake_events or 0,
-            over_speed_count=t.over_speed_count or 0,
-            cornering_events=t.cornering_events or 0,
-            idle_time_min=t.idle_time_min or 0.0,
-            trip_duration_min=t.trip_duration_min or 1.0,
-            distance_km=t.distance_km or 1.0,
-        )
+        dual = _dual_score_for_trip(t)
+        active = _get_active_score_result(dual)
         result.append(
             TripSummary(
                 trip_id=t.trip_id,
@@ -268,8 +328,8 @@ def get_driver_trips(driver_id: str, db: Session = Depends(get_db)):
                 trip_end=t.trip_end,
                 distance_km=t.distance_km or 0.0,
                 trip_duration_min=t.trip_duration_min or 0.0,
-                final_score=scored["final_score"],
-                risk_level=scored["risk_level"],
+                final_score=active["final_score"],
+                risk_level=active["risk_level"],
             )
         )
     return result
@@ -293,14 +353,28 @@ def get_trip_score(driver_id: str, trip_id: str, db: Session = Depends(get_db)):
             detail=f"Trip '{trip_id}' not found for driver '{driver_id}'"
         )
 
-    scored = calculate_trip_score(
-        accel_events=trip.accel_events or 0,
-        brake_events=trip.brake_events or 0,
-        over_speed_count=trip.over_speed_count or 0,
-        cornering_events=trip.cornering_events or 0,
-        idle_time_min=trip.idle_time_min or 0.0,
-        trip_duration_min=trip.trip_duration_min or 1.0,
-        distance_km=trip.distance_km or 1.0,
+    dual = _dual_score_for_trip(trip)
+    active = _get_active_score_result(dual)
+    
+    # Build comparison sides
+    rule_side = ScoreSide(
+        final_score=dual["rule_based"]["final_score"],
+        risk_level=dual["rule_based"]["risk_level"],
+        penalties=PenaltyBreakdown(**dual["rule_based"]["penalties"])
+    )
+    
+    ml_side = ScoreSide(
+        final_score=dual["ml"]["final_score"],
+        risk_level=dual["ml"]["risk_level"],
+        penalties=PenaltyBreakdown(**dual["ml"]["penalties"]),
+        confidence=dual["ml"]["ml_confidence"]
+    )
+    
+    comp_block = ScoreComparison(
+        rule_based=rule_side,
+        ml=ml_side,
+        score_difference=round(dual["ml"]["final_score"] - dual["rule_based"]["final_score"], 2),
+        active_method="ML" if USE_ML_MODEL else "Rule-Based"
     )
 
     return TripScoreResponse(
@@ -318,18 +392,23 @@ def get_trip_score(driver_id: str, trip_id: str, db: Session = Depends(get_db)):
         idle_time_min=trip.idle_time_min or 0.0,
 
         # Component scores
-        accel_score=scored["accel_score"],
-        braking_score=scored["braking_score"],
-        speeding_score=scored["speeding_score"],
-        cornering_score=scored["cornering_score"],
-        idle_score=scored["idle_score"],
+        accel_score=active["accel_score"],
+        braking_score=active["braking_score"],
+        speeding_score=active["speeding_score"],
+        cornering_score=active["cornering_score"],
+        idle_score=active["idle_score"],
 
         # Penalties
-        penalties=PenaltyBreakdown(**scored["penalties"]),
+        penalties=PenaltyBreakdown(**active["penalties"]),
 
         # Final
-        final_score=scored["final_score"],
-        risk_level=scored["risk_level"],
+        final_score=active["final_score"],
+        risk_level=active["risk_level"],
+        
+        # ML additions
+        scoring_method=active.get("scoring_method", "Rule-Based"),
+        ml_confidence=active.get("ml_confidence"),
+        score_comparison=comp_block
     )
 
 
@@ -354,16 +433,9 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
             detail=f"Trip '{trip_id}' not found for driver '{driver_id}'"
         )
 
-    # ── Driver Score ────────────────────────────
-    scored = calculate_trip_score(
-        accel_events=trip.accel_events or 0,
-        brake_events=trip.brake_events or 0,
-        over_speed_count=trip.over_speed_count or 0,
-        cornering_events=trip.cornering_events or 0,
-        idle_time_min=trip.idle_time_min or 0.0,
-        trip_duration_min=trip.trip_duration_min or 1.0,
-        distance_km=trip.distance_km or 1.0,
-    )
+    # ── Driver Score (Dual calculation & active selection) ──
+    dual = _dual_score_for_trip(trip)
+    scored = _get_active_score_result(dual)
 
     final_score = scored["final_score"]
     label = (
@@ -371,6 +443,25 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
         else "Average" if final_score >= 60
         else "Poor"
     )
+
+    # Build comparison block
+    rule_side = {
+        "final_score": dual["rule_based"]["final_score"],
+        "risk_level":  dual["rule_based"]["risk_level"],
+        "penalties":   dual["rule_based"]["penalties"],
+    }
+    ml_side = {
+        "final_score": dual["ml"]["final_score"],
+        "risk_level":  dual["ml"]["risk_level"],
+        "penalties":   dual["ml"]["penalties"],
+        "confidence":  dual["ml"]["ml_confidence"],
+    }
+    score_comp = {
+        "rule_based": rule_side,
+        "ml": ml_side,
+        "score_difference": round(dual["ml"]["final_score"] - dual["rule_based"]["final_score"], 2),
+        "active_method": "ML" if USE_ML_MODEL else "Rule-Based"
+    }
 
     # ── Fuel Theft Detection (reads from journey_fuel_logs via fuel_module) ──
     from fuel_module.routes import get_fuel_theft_for_trip
@@ -514,6 +605,9 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
             "score": final_score,
             "label": label,
             "risk_level": scored["risk_level"],
+            "scoring_method": scored.get("scoring_method", "Rule-Based"),
+            "ml_confidence": scored.get("ml_confidence"),
+            "score_comparison": score_comp,
             "breakdown": {
                 "acceleration": -scored["penalties"]["accel_penalty"],
                 "braking":      -scored["penalties"]["braking_penalty"],
