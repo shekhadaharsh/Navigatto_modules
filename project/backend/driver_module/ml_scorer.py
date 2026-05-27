@@ -3,43 +3,66 @@ import joblib
 import numpy as np
 from driver_module.scorer import calculate_trip_score, get_risk_level
 
-# --- Module Globals for Lazy Loading ---
-_model = None
-_scaler = None
+# ─────────────────────────────────────────────────────────────
+# MODEL VERSION SELECTION
+# USE_ML_MODEL=1 → Old model  → ml_model/    (original, rule-based labels)
+# USE_ML_MODEL=2 → New model  → ml_model_v2/ (context-aware labels, 19 features)
+# ─────────────────────────────────────────────────────────────
+_raw_version = os.getenv("USE_ML_MODEL", "1").strip()
+_ML_MODEL_VERSION = int(_raw_version) if _raw_version.isdigit() else 1
+
+_MODEL_FOLDER_MAP = {
+    1: "ml_model",      # Old — 12 features, rule-based labels
+    2: "ml_model_v2",   # New — 19 features, context-aware labels
+}
+
+# Module-level globals (lazy loaded per version)
+_loaded_version: int = -1
+_model   = None
+_scaler  = None
 _encoder = None
 _failed_loading = False
 
+
 def _load_model_assets() -> bool:
     """
-    Lazy loads the trained XGBoost model, StandardScaler, and LabelEncoder
-    from the ml_model/ directory. Returns True if successfully loaded,
-    else False (triggers fallback).
+    Lazy loads XGBoost model, StandardScaler, and LabelEncoder
+    from the correct versioned folder based on USE_ML_MODEL env var.
+    Returns True if successfully loaded, else False (triggers rule-based fallback).
     """
-    global _model, _scaler, _encoder, _failed_loading
-    
+    global _model, _scaler, _encoder, _failed_loading, _loaded_version
+
     if _failed_loading:
         return False
-    if _model is not None:
+    if _model is not None and _loaded_version == _ML_MODEL_VERSION:
         return True
-        
-    model_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ml_model")
-    model_path = os.path.join(model_dir, "driver_safety_model.pkl")
-    scaler_path = os.path.join(model_dir, "scaler.pkl")
+
+    # Reset on version switch
+    _model = _scaler = _encoder = None
+    _failed_loading = False
+
+    folder_name = _MODEL_FOLDER_MAP.get(_ML_MODEL_VERSION, "ml_model")
+    model_dir   = os.path.join(os.path.dirname(os.path.abspath(__file__)), folder_name)
+
+    model_path   = os.path.join(model_dir, "driver_safety_model.pkl")
+    scaler_path  = os.path.join(model_dir, "scaler.pkl")
     encoder_path = os.path.join(model_dir, "encoder.pkl")
-    
+
     if not (os.path.exists(model_path) and os.path.exists(scaler_path) and os.path.exists(encoder_path)):
-        print("[WARNING] FleetIQ ML model binaries not found. Automatically falling back to legacy Rule-Based math scoring.")
+        print(f"[WARNING] ML model v{_ML_MODEL_VERSION} binaries not found in '{folder_name}/'. "
+              f"Falling back to Rule-Based scoring.")
         _failed_loading = True
         return False
-        
+
     try:
-        _model = joblib.load(model_path)
-        _scaler = joblib.load(scaler_path)
+        _model   = joblib.load(model_path)
+        _scaler  = joblib.load(scaler_path)
         _encoder = joblib.load(encoder_path)
-        print("[SUCCESS] FleetIQ ML Model and Preprocessor assets loaded successfully.")
+        _loaded_version = _ML_MODEL_VERSION
+        print(f"[SUCCESS] FleetIQ ML Model v{_ML_MODEL_VERSION} loaded from '{folder_name}/'.")
         return True
     except Exception as e:
-        print(f"[ERROR] Failed to load FleetIQ ML model binaries: {e}. Falling back to Rule-Based math scoring.")
+        print(f"[ERROR] Failed to load ML model v{_ML_MODEL_VERSION}: {e}. Falling back to Rule-Based.")
         _failed_loading = True
         return False
 
@@ -59,13 +82,14 @@ def calculate_trip_score_ml(
     avg_engine_rpm:   float,
 ) -> dict:
     """
-    Executes the machine learning-based driver safety scoring.
-    Failsafe: Auto-falls back to standard rule-based scoring if ML assets fail to load.
+    ML-based driver safety scoring.
+    Version 1 (USE_ML_MODEL=1): Old model, 12 features from ml_model/ folder.
+    Version 2 (USE_ML_MODEL=2): New context-aware model, 19 features from ml_model_v2/ folder.
+    Auto-falls back to Rule-Based if model files not found.
     """
-    
-    # ── Step 1: Ensure Model Assets are Loaded ──
+
+    # ── Step 1: Load model assets ──
     if not _load_model_assets():
-        # FALLBACK: Execute legacy rule-based math
         result = calculate_trip_score(
             accel_events=accel_events,
             brake_events=brake_events,
@@ -75,56 +99,74 @@ def calculate_trip_score_ml(
             trip_duration_min=trip_duration_min,
             distance_km=distance_km
         )
-        result["scoring_method"] = "Rule-Based"
-        result["ml_confidence"] = None
+        result["scoring_method"] = "Rule-Based (ML Fallback)"
+        result["ml_confidence"]  = None
         return result
 
-    # ── Step 2: Preprocess Features ──
+    # ── Step 2: Encode route_type ──
     route_type_clean = str(route_type or "Mixed").strip()
-    
     try:
         route_encoded = _encoder.transform([route_type_clean])[0]
     except Exception:
-        # Fallback to "Mixed" encoding if route_type is unseen in training
         try:
             route_encoded = _encoder.transform(["Mixed"])[0]
         except Exception:
             route_encoded = 0
 
-    # Ensure all numerical values are float and non-null
-    features = [
+    # ── Step 3: Build feature vector (version-aware) ──
+    dist_km   = float(distance_km or 1.0)
+    dur_min   = float(trip_duration_min or 1.0)
+    avg_spd   = float(avg_speed_kmh or 0.0)
+    max_spd   = float(max_speed_kmh or 0.0)
+    rpm       = float(avg_engine_rpm or 0.0)
+
+    # 12 base features (both versions share these)
+    base_features = [
         float(accel_events or 0),
         float(brake_events or 0),
         float(over_speed_count or 0),
         float(cornering_events or 0),
         float(idle_time_min or 0.0),
-        float(distance_km or 1.0),
-        float(trip_duration_min or 1.0),
+        dist_km,
+        dur_min,
         float(route_encoded),
-        float(avg_speed_kmh or 0.0),
-        float(max_speed_kmh or 0.0),
+        avg_spd,
+        max_spd,
         float(num_stops or 0),
-        float(avg_engine_rpm or 0.0)
+        rpm,
     ]
-    
-    # ── Step 3: Run Scaling & Prediction ──
-    features_arr = np.array([features])
+
+    if _ML_MODEL_VERSION == 2:
+        # 7 derived features — only for new context-aware model (v2)
+        accel_per_km  = float(accel_events or 0)    / dist_km
+        brake_per_km  = float(brake_events or 0)    / dist_km
+        speed_per_km  = float(over_speed_count or 0)/ dist_km
+        corner_per_km = float(cornering_events or 0)/ dist_km
+        idle_pct      = float(idle_time_min or 0.0) / dur_min
+        speed_ratio   = avg_spd / max_spd if max_spd > 0 else 0.0
+        rpm_per_speed = rpm / avg_spd      if avg_spd > 0 else 0.0
+
+        features = base_features + [
+            accel_per_km, brake_per_km, speed_per_km, corner_per_km,
+            idle_pct, speed_ratio, rpm_per_speed
+        ]
+    else:
+        # Version 1 — only 12 features
+        features = base_features
+
+    # ── Step 4: Scale & Predict ──
+    features_arr    = np.array([features])
     features_scaled = _scaler.transform(features_arr)
-    
-    pred_score = _model.predict(features_scaled)[0]
-    final_score = round(max(0.0, min(100.0, float(pred_score))), 2)
+    pred_score      = _model.predict(features_scaled)[0]
+    final_score     = round(max(0.0, min(100.0, float(pred_score))), 2)
 
-    # ── Step 4: Proximity Confidence Calculation ──
-    # Computes Euclidean distance of the test sample from the standardized origin
-    dist = np.linalg.norm(features_scaled[0])
-    # Map distance exponentially to a percentage. If dist is 0, confidence is 100%.
-    confidence = 100.0 * np.exp(-0.05 * dist)
-    confidence = round(max(0.0, min(100.0, confidence)), 2)
+    # ── Step 5: Proximity Confidence ──
+    dist       = np.linalg.norm(features_scaled[0])
+    confidence = round(max(0.0, min(100.0, 100.0 * np.exp(-0.05 * dist))), 2)
 
-    # ── Step 5: Proportional Penalty Distribution (correlated with actual rule-based penalties) ──
+    # ── Step 6: Proportional Penalty Distribution ──
     total_penalty = 100.0 - final_score
-    
-    # Calculate rule-based penalties first to use as weights
+
     rule_result = calculate_trip_score(
         accel_events=accel_events,
         brake_events=brake_events,
@@ -134,36 +176,31 @@ def calculate_trip_score_ml(
         trip_duration_min=trip_duration_min,
         distance_km=distance_km
     )
-    
+
     rule_penalties = rule_result["penalties"]
-    rp_accel = rule_penalties["accel_penalty"]
-    rp_braking = rule_penalties["braking_penalty"]
-    rp_speeding = rule_penalties["speeding_penalty"]
+    rp_accel     = rule_penalties["accel_penalty"]
+    rp_braking   = rule_penalties["braking_penalty"]
+    rp_speeding  = rule_penalties["speeding_penalty"]
     rp_cornering = rule_penalties["cornering_penalty"]
-    rp_idle = rule_penalties["idle_penalty"]
-    
-    # Calculate the weighted sum of rule-based penalties
-    # weights: accel: 0.20, braking: 0.30, speeding: 0.30, cornering: 0.10, idle: 0.10
+    rp_idle      = rule_penalties["idle_penalty"]
+
     total_weighted_rule_penalty = (
-        rp_accel * 0.20 +
-        rp_braking * 0.30 +
-        rp_speeding * 0.30 +
+        rp_accel     * 0.20 +
+        rp_braking   * 0.30 +
+        rp_speeding  * 0.30 +
         rp_cornering * 0.10 +
-        rp_idle * 0.10
+        rp_idle      * 0.10
     )
-    
+
     if total_weighted_rule_penalty > 0 and total_penalty > 0:
-        # Distribute ML total penalty proportionally to rule-based penalties
-        ratio = total_penalty / total_weighted_rule_penalty
-        accel_penalty     = round(rp_accel * ratio, 2)
-        braking_penalty   = round(rp_braking * ratio, 2)
-        speeding_penalty  = round(rp_speeding * ratio, 2)
+        ratio             = total_penalty / total_weighted_rule_penalty
+        accel_penalty     = round(rp_accel     * ratio, 2)
+        braking_penalty   = round(rp_braking   * ratio, 2)
+        speeding_penalty  = round(rp_speeding  * ratio, 2)
         cornering_penalty = round(rp_cornering * ratio, 2)
-        idle_penalty      = round(rp_idle * ratio, 2)
+        idle_penalty      = round(rp_idle      * ratio, 2)
     else:
-        # Fallback if no rule-based penalties exist but ML predicts a penalty, or if total penalty is 0
         if total_penalty > 0:
-            # Distribute based on standard Geotab weights
             accel_penalty     = round(total_penalty * 0.20, 2)
             braking_penalty   = round(total_penalty * 0.30, 2)
             speeding_penalty  = round(total_penalty * 0.30, 2)
@@ -172,25 +209,23 @@ def calculate_trip_score_ml(
         else:
             accel_penalty = braking_penalty = speeding_penalty = cornering_penalty = idle_penalty = 0.0
 
-    # Invert back to calculate component scores (clamped between 0 and 100)
-    accel_score     = round(max(0.0, min(100.0, 100.0 - accel_penalty)), 2)
-    braking_score   = round(max(0.0, min(100.0, 100.0 - braking_penalty)), 2)
-    speeding_score  = round(max(0.0, min(100.0, 100.0 - speeding_penalty)), 2)
+    # ── Step 7: Component Scores ──
+    accel_score     = round(max(0.0, min(100.0, 100.0 - accel_penalty)),     2)
+    braking_score   = round(max(0.0, min(100.0, 100.0 - braking_penalty)),   2)
+    speeding_score  = round(max(0.0, min(100.0, 100.0 - speeding_penalty)),  2)
     cornering_score = round(max(0.0, min(100.0, 100.0 - cornering_penalty)), 2)
-    idle_score      = round(max(0.0, min(100.0, 100.0 - idle_penalty)), 2)
+    idle_score      = round(max(0.0, min(100.0, 100.0 - idle_penalty)),      2)
 
-    # ── Step 6: Risk Classification ──
+    # ── Step 8: Risk Classification ──
     risk_level = get_risk_level(final_score)
 
     return {
-        # Component scores
         "accel_score":      accel_score,
         "braking_score":    braking_score,
         "speeding_score":   speeding_score,
         "cornering_score":  cornering_score,
         "idle_score":       idle_score,
 
-        # Penalty points
         "penalties": {
             "accel_penalty":    accel_penalty,
             "braking_penalty":  braking_penalty,
@@ -200,9 +235,8 @@ def calculate_trip_score_ml(
             "baseline":         100,
         },
 
-        # Final result
-        "final_score":      final_score,
-        "risk_level":       risk_level,
-        "scoring_method":   "ML",
-        "ml_confidence":    confidence
+        "final_score":    final_score,
+        "risk_level":     risk_level,
+        "scoring_method": f"ML v{_ML_MODEL_VERSION}",
+        "ml_confidence":  confidence,
     }
