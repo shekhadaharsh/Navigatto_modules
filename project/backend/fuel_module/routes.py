@@ -212,6 +212,9 @@ async def event_generator(request: Request):
         except Exception as e:
             print(f"SSE Error: {e}")
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        finally:
+            if 'db' in locals():
+                db.close()
             
         # Wait before next poll
         await asyncio.sleep(5)
