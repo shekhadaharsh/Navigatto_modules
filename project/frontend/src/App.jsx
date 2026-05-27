@@ -387,6 +387,9 @@ export default function App() {
   const [activeMaintTab, setActiveMaintTab] = useState('vehicle');
   const [maintSearchTerm, setMaintSearchTerm] = useState('');
   const [maintFilterStatus, setMaintFilterStatus] = useState('all');
+  const [fuelAlerts, setFuelAlerts] = useState([]);
+  const [activeFuelAlert, setActiveFuelAlert] = useState(null);
+  const [showAlertToast, setShowAlertToast] = useState(false);
 
   // --- 1. LOAD DRIVERS ---
   useEffect(() => {
@@ -577,6 +580,34 @@ export default function App() {
     fetchDetails();
   }, [activeJourneyId, activeDriverId, isUsingMock, journeys]);
 
+
+  // --- GLOBAL REAL-TIME FUEL THEFT SSE STREAM ---
+  useEffect(() => {
+    if (isUsingMock) return;
+
+    const es = new EventSource('/api/fuel/stream');
+
+    es.onmessage = (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        if (payload.error) return;
+
+        setFuelAlerts(prev => {
+          const alreadyExists = prev.some(a => a.alert_id === payload.alert_id);
+          if (alreadyExists) return prev;
+          setShowAlertToast(true);
+          return [payload, ...prev].slice(0, 20);
+        });
+      } catch (_) {}
+    };
+
+    es.onerror = () => {};
+
+    return () => es.close();
+  }, [isUsingMock]);
+
+
+  
   // --- 4. RECOMPUTE SAFETY MODELS ---
   const handleRecompute = async () => {
     if (!activeJourneyId) return;
@@ -794,6 +825,56 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      {/* ── Global Fuel Theft Toast Banner ── */}
+      {showAlertToast && fuelAlerts.length > 0 && (
+        <div className="fixed top-20 right-4 z-50 w-80 animate-slide-up">
+          <button
+            onClick={() => {
+              setActiveFuelAlert(fuelAlerts[0]);
+              setShowAlertToast(false);
+            }}
+            className="w-full flex items-start gap-3 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white p-4 rounded-2xl shadow-alert-glow border border-rose-500 transition-all cursor-pointer outline-none text-left"
+          >
+            <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
+              <ShieldAlert className="w-5 h-5 text-white animate-pulse" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-widest text-rose-200 mb-0.5">
+                🚨 Live Fuel Theft Alert
+              </p>
+              <p className="text-sm font-extrabold text-white font-outfit leading-snug">
+                {fuelAlerts[0].theft_type === 'IGNITION_OFF_DROP'
+                  ? `Ignition OFF theft — ${fuelAlerts[0].theft_amount_liters?.toFixed(2)}L stolen`
+                  : fuelAlerts[0].theft_type === 'RUNNING_THEFT'
+                    ? `Running theft — ${fuelAlerts[0].theft_amount_liters?.toFixed(2)}L siphoned while moving`
+                    : `Refuel mismatch — ${fuelAlerts[0].theft_amount_liters?.toFixed(2)}L discrepancy`
+                }
+              </p>
+              <p className="text-[10px] text-rose-200 font-semibold mt-0.5">
+                Driver: {fuelAlerts[0].driver_id} · Vehicle: {fuelAlerts[0].vehicle_id}
+              </p>
+              <p className="text-[9px] text-rose-300 font-bold mt-1 flex items-center gap-1">
+                <ChevronRight className="w-3 h-3" /> Click to view full details
+              </p>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowAlertToast(false);
+              }}
+              className="text-white/60 hover:text-white transition-colors p-0.5 rounded-lg hover:bg-white/10 border-0 outline-none cursor-pointer shrink-0"
+            >
+              <XCircle className="w-4 h-4" />
+            </button>
+          </button>
+          {fuelAlerts.length > 1 && (
+            <div className="mt-1 text-center text-[9px] text-rose-500 font-bold bg-rose-50 border border-rose-100 rounded-xl py-1.5">
+              +{fuelAlerts.length - 1} more alert{fuelAlerts.length > 2 ? 's' : ''} pending
+            </div>
+          )}
+        </div>
+      )}
 
       {/* -------------------- MAIN WORKSPACE -------------------- */}
       <div className="flex-1 flex overflow-hidden">
@@ -1949,6 +2030,144 @@ export default function App() {
       )}
     </>
   )}
+
+  {/* -------------------- GLOBAL FUEL THEFT DETAIL MODAL -------------------- */}
+  {activeFuelAlert && (
+    <div
+      className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
+      onClick={() => setActiveFuelAlert(null)}
+    >
+      <div
+        className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-slide-up"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Modal Header */}
+        <div className="bg-rose-600 px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <ShieldAlert className="w-5 h-5 text-white" />
+            <span className="text-sm font-extrabold text-white font-outfit tracking-wide uppercase">
+              🚨 Fuel Theft Detected
+            </span>
+          </div>
+          <button
+            onClick={() => setActiveFuelAlert(null)}
+            className="text-white/70 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10 border-0 outline-none cursor-pointer"
+          >
+            <XCircle className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Modal Body */}
+        <div className="p-6 space-y-4">
+          {/* Human-readable theft description */}
+          <div className={`px-4 py-3 rounded-2xl border text-sm font-bold flex items-start gap-3 ${
+            activeFuelAlert.theft_type === 'IGNITION_OFF_DROP'
+              ? 'bg-rose-50 border-rose-200 text-rose-700'
+              : activeFuelAlert.theft_type === 'RUNNING_THEFT'
+                ? 'bg-orange-50 border-orange-200 text-orange-700'
+                : 'bg-amber-50 border-amber-200 text-amber-700'
+          }`}>
+            <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+            <span>
+              {activeFuelAlert.theft_type === 'IGNITION_OFF_DROP' &&
+                `Fuel theft while ignition is OFF — ${activeFuelAlert.theft_amount_liters?.toFixed(2)}L drained while vehicle was stationary and engine was off`
+              }
+              {activeFuelAlert.theft_type === 'RUNNING_THEFT' &&
+                `Running theft detected — ${activeFuelAlert.theft_amount_liters?.toFixed(2)}L siphoned while vehicle was moving at ${activeFuelAlert.speed_kmh?.toFixed(1)} km/h`
+              }
+              {activeFuelAlert.theft_type === 'REFUEL_THEFT' &&
+                `Refuel discrepancy — ${activeFuelAlert.theft_amount_liters?.toFixed(2)}L mismatch between sensor reading and uploaded receipt`
+              }
+              {!['IGNITION_OFF_DROP','RUNNING_THEFT','REFUEL_THEFT'].includes(activeFuelAlert.theft_type) &&
+                `Suspicious fuel drop of ${activeFuelAlert.theft_amount_liters?.toFixed(2)}L detected (${activeFuelAlert.theft_type})`
+              }
+            </span>
+          </div>
+
+          {/* Detail Grid */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl">
+              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide mb-0.5">Driver ID</p>
+              <p className="text-sm font-extrabold text-slate-800 font-outfit">{activeFuelAlert.driver_id}</p>
+            </div>
+            <div className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl">
+              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide mb-0.5">Vehicle</p>
+              <p className="text-sm font-extrabold text-slate-800 font-outfit">{activeFuelAlert.vehicle_id}</p>
+            </div>
+            <div className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl">
+              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide mb-0.5">Fuel Stolen</p>
+              <p className="text-sm font-extrabold text-rose-600 font-outfit">
+                {activeFuelAlert.theft_amount_liters?.toFixed(2)} L
+              </p>
+            </div>
+            <div className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl">
+              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide mb-0.5">Speed at Event</p>
+              <p className="text-sm font-extrabold text-slate-800 font-outfit">
+                {activeFuelAlert.speed_kmh?.toFixed(1) ?? '0.0'} km/h
+              </p>
+            </div>
+            <div className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl col-span-2">
+              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide mb-0.5">Event Time</p>
+              <p className="text-xs font-bold text-slate-700">{activeFuelAlert.event_time}</p>
+            </div>
+            <div className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl col-span-2">
+              <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide mb-0.5">Trip ID</p>
+              <p className="text-xs font-bold text-slate-700">{activeFuelAlert.trip_id}</p>
+            </div>
+            {activeFuelAlert.gps_lat && activeFuelAlert.gps_lng && (
+              <div className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl col-span-2">
+                <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide mb-0.5">GPS Location</p>
+                <p className="text-xs font-bold text-slate-700">
+                  {activeFuelAlert.gps_lat?.toFixed(5)}, {activeFuelAlert.gps_lng?.toFixed(5)}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Modal Footer */}
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-200/80 flex items-center justify-between gap-3 flex-wrap">
+          <button
+            onClick={() => {
+              setActiveDriverId(activeFuelAlert.driver_id);
+              setActiveJourneyId(activeFuelAlert.trip_id);
+              setMobileViewTab('details');
+              setActiveFuelAlert(null);
+              setShowAlertToast(false);
+            }}
+            className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-900 active:scale-95 text-white text-xs font-bold font-outfit rounded-xl transition-all cursor-pointer shadow-sm border-0 outline-none"
+          >
+            <ArrowRight className="w-4 h-4" />
+            Go to Driver &amp; Trip
+          </button>
+
+          {fuelAlerts.length > 1 && (
+            <button
+              onClick={() => {
+                const currentIdx = fuelAlerts.findIndex(a => a.alert_id === activeFuelAlert.alert_id);
+                const nextIdx = (currentIdx + 1) % fuelAlerts.length;
+                setActiveFuelAlert(fuelAlerts[nextIdx]);
+              }}
+              className="text-xs font-bold text-slate-500 hover:text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 px-3 py-2.5 rounded-xl transition-all cursor-pointer outline-none"
+            >
+              Next ({fuelAlerts.length - 1} more)
+            </button>
+          )}
+
+          <button
+            onClick={() => {
+              setFuelAlerts(prev => prev.filter(a => a.alert_id !== activeFuelAlert.alert_id));
+              setActiveFuelAlert(null);
+            }}
+            className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white text-xs font-bold font-outfit rounded-xl transition-all cursor-pointer shadow-sm border-0 outline-none"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    </div>
+  )}
+  
 </main>
 </div>
 
