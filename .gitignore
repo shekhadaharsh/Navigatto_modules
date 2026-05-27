@@ -1,5 +1,7 @@
 venv/
 .env
+file.txt
+navigatto_new_DB.sql
 
 
 __pycache__/
