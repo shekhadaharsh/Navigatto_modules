@@ -314,14 +314,18 @@ def get_driver_trips(driver_id: str, db: Session = Depends(get_db)):
         .order_by(Trip.trip_start.desc())
         .all()
     )
-
     if not trips:
         raise HTTPException(status_code=404, detail=f"No trips found for driver '{driver_id}'")
+
+    from fuel_module.routes import get_fuel_theft_for_trip
 
     result = []
     for t in trips:
         dual = _dual_score_for_trip(t)
         active = _get_active_score_result(dual)
+
+        theft_data = get_fuel_theft_for_trip(db, driver_id, t.trip_id)
+
         result.append(
             TripSummary(
                 trip_id=t.trip_id,
@@ -332,6 +336,7 @@ def get_driver_trips(driver_id: str, db: Session = Depends(get_db)):
                 trip_duration_min=t.trip_duration_min or 0.0,
                 final_score=active["final_score"],
                 risk_level=active["risk_level"],
+                fuel_theft_detected=theft_data["detected"],
             )
         )
     return result

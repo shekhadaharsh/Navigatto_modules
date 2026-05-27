@@ -84,6 +84,7 @@ class TripSummary(BaseModel):
     trip_duration_min:float
     final_score:      float
     risk_level:       str
+    fuel_theft_detected: bool = False
 
     class Config:
         from_attributes = True
