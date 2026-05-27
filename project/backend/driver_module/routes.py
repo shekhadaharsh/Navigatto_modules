@@ -34,8 +34,11 @@ from driver_module.schema import (
 
 router = APIRouter(prefix="/drivers", tags=["Driver Behaviour"])
 
-# ── Feature Flag & In-Memory RAM Cache (No DB changes) ──────────
-USE_ML_MODEL = os.getenv("USE_ML_MODEL", "true").lower() in ("true", "1", "yes")
+# ── Model Version Flag & In-Memory RAM Cache (No DB changes) ──────────
+# USE_ML_MODEL=1 → Old model (ml_model/ folder)
+# USE_ML_MODEL=2 → New context-aware model (ml_model_v2/ folder)
+_ML_MODEL_VERSION = int(os.getenv("USE_ML_MODEL", "1")) if os.getenv("USE_ML_MODEL", "1").strip().isdigit() else (1 if os.getenv("USE_ML_MODEL", "true").lower() in ("true", "yes") else 0)
+USE_ML_MODEL = _ML_MODEL_VERSION in (1, 2)
 _score_cache: dict = {}
 
 def _dual_score_for_trip(trip: Trip) -> dict:
