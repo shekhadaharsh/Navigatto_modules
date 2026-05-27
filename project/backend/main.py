@@ -18,13 +18,19 @@ from maintenance_module.routes import router as maint_router
 # ─────────────────────────────────────────
 # Create DB tables on startup
 # ─────────────────────────────────────────
+from database.db import DB_TYPE
+
+if DB_TYPE.lower() == "sqlite":
+    for table_name, table in Base.metadata.tables.items():
+        table.schema = None
+
 Base.metadata.create_all(bind=engine)
 
 import os
 import asyncio
 from contextlib import asynccontextmanager
 from sqlalchemy import text
-from database.db import SessionLocal
+from database.db import SessionLocal, DB_TYPE
 from fastapi import APIRouter
 
 # Load settings from environment
@@ -47,6 +53,8 @@ class ReplayManager:
         return self._running and self._task is not None and not self._task.done()
 
     def _ensure_null_safe(self, db):
+        if DB_TYPE.lower() == "sqlite":
+            return
         result = db.execute(text("SELECT last_historical_time FROM dbo.replay_tracker WHERE id = 1")).fetchone()
         if result is None or result[0] is None:
             db.execute(text(f"UPDATE dbo.replay_tracker SET last_historical_time = '{RESET_TIME}' WHERE id = 1"))
@@ -58,12 +66,15 @@ class ReplayManager:
         self._running = True
         while self._running:
             try:
-                db = SessionLocal()
-                self._ensure_null_safe(db)
-                db.execute(text("EXEC ReplayLiveTelemetry;"))
-                db.commit()
-                db.close()
-                print(f"[ReplayManager] Executed ReplayLiveTelemetry")
+                if DB_TYPE.lower() == "sqlite":
+                    print("[ReplayManager] Skiping ReplayLiveTelemetry on SQLite")
+                else:
+                    db = SessionLocal()
+                    self._ensure_null_safe(db)
+                    db.execute(text("EXEC ReplayLiveTelemetry;"))
+                    db.commit()
+                    db.close()
+                    print(f"[ReplayManager] Executed ReplayLiveTelemetry")
             except Exception as e:
                 print(f"[ReplayManager] Error: {e}")
             await asyncio.sleep(REPLAY_INTERVAL)
@@ -86,22 +97,25 @@ class ReplayManager:
     async def fresh_start(self):
         await self.stop()
         try:
-            db = SessionLocal()
+            if DB_TYPE.lower() != "sqlite":
+                db = SessionLocal()
 
-            # Step 1: delete child table FIRST (FK constraint)
-            db.execute(text("DELETE FROM dbo.journey_fuel_logs1;"))
-            db.commit()
+                # Step 1: delete child table FIRST (FK constraint)
+                db.execute(text("DELETE FROM dbo.journey_fuel_logs1;"))
+                db.commit()
 
-            # Step 2: now safe to delete parent table
-            db.execute(text("DELETE FROM dbo.fmc_raw_packets;"))
-            db.commit()
+                # Step 2: now safe to delete parent table
+                db.execute(text("DELETE FROM dbo.fmc_raw_packets;"))
+                db.commit()
 
-            # Step 3: reset tracker
-            db.execute(text(f"UPDATE dbo.replay_tracker SET last_historical_time = '{RESET_TIME}' WHERE id = 1;"))
-            db.commit()
+                # Step 3: reset tracker
+                db.execute(text(f"UPDATE dbo.replay_tracker SET last_historical_time = '{RESET_TIME}' WHERE id = 1;"))
+                db.commit()
 
-            db.close()
-            print("[ReplayManager] Fresh start — tables cleared, tracker reset")
+                db.close()
+                print("[ReplayManager] Fresh start — tables cleared, tracker reset")
+            else:
+                print("[ReplayManager] Fresh start skipped for SQLite")
 
         except Exception as e:
             print(f"[ReplayManager] Fresh start DB error: {e}")

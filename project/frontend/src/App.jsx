@@ -553,16 +553,16 @@ export default function App() {
     const fetchJourneys = async () => {
       setIsLoadingJourneys(true);
       setJourneyDetails(null);
-      setActiveJourneyId(null);
 
       if (isUsingMock) {
         // Mock execution
         setTimeout(() => {
           const list = generateMockJourneys(activeDriverId);
           setJourneys(list);
-          if (list.length > 0) {
-            setActiveJourneyId(list[0].journey_id);
-          }
+          setActiveJourneyId(prev => {
+            if (prev && list.some(t => t.journey_id === prev)) return prev;
+            return list.length > 0 ? list[0].journey_id : null;
+          });
           setIsLoadingJourneys(false);
         }, 300);
       } else {
@@ -583,9 +583,10 @@ export default function App() {
             maintenance_critical: false,
           }));
           setJourneys(normalized);
-          if (normalized.length > 0) {
-            setActiveJourneyId(normalized[0].journey_id);
-          }
+          setActiveJourneyId(prev => {
+            if (prev && normalized.some(t => t.journey_id === prev)) return prev;
+            return normalized.length > 0 ? normalized[0].journey_id : null;
+          });
         } catch (err) {
           console.error("Error loading journeys", err);
         } finally {
@@ -843,6 +844,58 @@ export default function App() {
   const totalFleetTrips = drivers.reduce((acc, curr) => acc + curr.total_trips, 0);
   const totalFleetDist = drivers.reduce((acc, curr) => acc + curr.total_distance_km, 0);
 
+  const renderToastBanner = (isFloating) => {
+    if (!showAlertToast || fuelAlerts.length === 0) return null;
+    return (
+      <div className={isFloating ? "fixed top-24 right-8 z-[70] w-96 animate-slide-up shadow-2xl" : "w-full max-w-md animate-slide-down shadow-2xl z-[70]"}>
+        <button
+          onClick={() => {
+            setActiveFuelAlert(fuelAlerts[0]);
+            setShowAlertToast(false);
+          }}
+          className="w-full flex items-start gap-3 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white p-4 rounded-2xl shadow-alert-glow border border-rose-500 transition-all cursor-pointer outline-none text-left"
+        >
+          <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
+            <ShieldAlert className="w-5 h-5 text-white animate-pulse" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] font-black uppercase tracking-widest text-rose-200 mb-0.5">
+              🚨 Live Fuel Theft Alert
+            </p>
+            <p className="text-sm font-extrabold text-white font-outfit leading-snug">
+              {fuelAlerts[0].theft_type === 'IGNITION_OFF_DROP'
+                ? `Ignition OFF theft — ${fuelAlerts[0].theft_amount_liters?.toFixed(2)}L stolen`
+                : fuelAlerts[0].theft_type === 'RUNNING_THEFT'
+                  ? `Running theft — ${fuelAlerts[0].theft_amount_liters?.toFixed(2)}L siphoned while moving`
+                  : `Refuel mismatch — ${fuelAlerts[0].theft_amount_liters?.toFixed(2)}L discrepancy`
+              }
+            </p>
+            <p className="text-[10px] text-rose-200 font-semibold mt-0.5">
+              Driver: {fuelAlerts[0].driver_id} · Vehicle: {fuelAlerts[0].vehicle_id}
+            </p>
+            <p className="text-[9px] text-rose-300 font-bold mt-1 flex items-center gap-1">
+              <ChevronRight className="w-3 h-3" /> Click to view full details
+            </p>
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowAlertToast(false);
+            }}
+            className="text-white/60 hover:text-white transition-colors p-0.5 rounded-lg hover:bg-white/10 border-0 outline-none cursor-pointer shrink-0"
+          >
+            <XCircle className="w-4 h-4" />
+          </button>
+        </button>
+        {fuelAlerts.length > 1 && (
+          <div className="mt-1 text-center text-[9px] text-rose-500 font-bold bg-rose-50 border border-rose-100 rounded-xl py-1.5">
+            +{fuelAlerts.length - 1} more alert{fuelAlerts.length > 2 ? 's' : ''} pending
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="h-full flex flex-col font-sans bg-[#f8fafc] text-slate-700 select-text">
 
@@ -897,54 +950,7 @@ export default function App() {
       </header>
 
       {/* ── Global Fuel Theft Toast Banner ── */}
-      {showAlertToast && fuelAlerts.length > 0 && (
-        <div className="fixed top-20 right-4 z-50 w-80 animate-slide-up">
-          <button
-            onClick={() => {
-              setActiveFuelAlert(fuelAlerts[0]);
-              setShowAlertToast(false);
-            }}
-            className="w-full flex items-start gap-3 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white p-4 rounded-2xl shadow-alert-glow border border-rose-500 transition-all cursor-pointer outline-none text-left"
-          >
-            <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center shrink-0 mt-0.5">
-              <ShieldAlert className="w-5 h-5 text-white animate-pulse" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-widest text-rose-200 mb-0.5">
-                🚨 Live Fuel Theft Alert
-              </p>
-              <p className="text-sm font-extrabold text-white font-outfit leading-snug">
-                {fuelAlerts[0].theft_type === 'IGNITION_OFF_DROP'
-                  ? `Ignition OFF theft — ${fuelAlerts[0].theft_amount_liters?.toFixed(2)}L stolen`
-                  : fuelAlerts[0].theft_type === 'RUNNING_THEFT'
-                    ? `Running theft — ${fuelAlerts[0].theft_amount_liters?.toFixed(2)}L siphoned while moving`
-                    : `Refuel mismatch — ${fuelAlerts[0].theft_amount_liters?.toFixed(2)}L discrepancy`
-                }
-              </p>
-              <p className="text-[10px] text-rose-200 font-semibold mt-0.5">
-                Driver: {fuelAlerts[0].driver_id} · Vehicle: {fuelAlerts[0].vehicle_id}
-              </p>
-              <p className="text-[9px] text-rose-300 font-bold mt-1 flex items-center gap-1">
-                <ChevronRight className="w-3 h-3" /> Click to view full details
-              </p>
-            </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setShowAlertToast(false);
-              }}
-              className="text-white/60 hover:text-white transition-colors p-0.5 rounded-lg hover:bg-white/10 border-0 outline-none cursor-pointer shrink-0"
-            >
-              <XCircle className="w-4 h-4" />
-            </button>
-          </button>
-          {fuelAlerts.length > 1 && (
-            <div className="mt-1 text-center text-[9px] text-rose-500 font-bold bg-rose-50 border border-rose-100 rounded-xl py-1.5">
-              +{fuelAlerts.length - 1} more alert{fuelAlerts.length > 2 ? 's' : ''} pending
-            </div>
-          )}
-        </div>
-      )}
+      {!activeFuelAlert && renderToastBanner(true)}
 
       {/* -------------------- MAIN WORKSPACE -------------------- */}
       <div className="flex-1 flex overflow-hidden">
@@ -2263,18 +2269,19 @@ export default function App() {
               className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
               onClick={() => setActiveFuelAlert(null)}
             >
-              <div
-                className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-slide-up"
-                onClick={e => e.stopPropagation()}
-              >
-                {/* Modal Header */}
-                <div className="bg-rose-600 px-6 py-4 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <ShieldAlert className="w-5 h-5 text-white" />
-                    <span className="text-sm font-extrabold text-white font-outfit tracking-wide uppercase">
-                      🚨 Fuel Theft Detected
-                    </span>
-                  </div>
+              <div className="relative flex items-start w-full max-w-md">
+                <div
+                  className="bg-white rounded-3xl shadow-2xl w-full overflow-hidden animate-slide-up shrink-0"
+                  onClick={e => e.stopPropagation()}
+                >
+                  {/* Modal Header */}
+                  <div className="bg-rose-600 px-6 py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <ShieldAlert className="w-5 h-5 text-white" />
+                      <span className="text-sm font-extrabold text-white font-outfit tracking-wide uppercase">
+                        🚨 Fuel Theft Detected
+                      </span>
+                    </div>
                   <button
                     onClick={() => setActiveFuelAlert(null)}
                     className="text-white/70 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10 border-0 outline-none cursor-pointer"
@@ -2369,9 +2376,11 @@ export default function App() {
                   {fuelAlerts.length > 1 && (
                     <button
                       onClick={() => {
-                        const currentIdx = fuelAlerts.findIndex(a => a.alert_id === activeFuelAlert.alert_id);
-                        const nextIdx = (currentIdx + 1) % fuelAlerts.length;
-                        setActiveFuelAlert(fuelAlerts[nextIdx]);
+                        setFuelAlerts(prev => {
+                          const newAlerts = prev.filter(a => a.alert_id !== activeFuelAlert.alert_id);
+                          setActiveFuelAlert(newAlerts[0] || null);
+                          return newAlerts;
+                        });
                       }}
                       className="text-xs font-bold text-slate-500 hover:text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 px-3 py-2.5 rounded-xl transition-all cursor-pointer outline-none"
                     >
@@ -2390,6 +2399,11 @@ export default function App() {
                   </button>
                 </div>
               </div>
+              {/* Toast on the right */}
+              <div className="absolute top-0 -right-6 translate-x-full">
+                {renderToastBanner(false)}
+              </div>
+            </div>
             </div>
           )}
 

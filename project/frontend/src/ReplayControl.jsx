@@ -44,6 +44,9 @@ export default function ReplayControl() {
             ? "running"
             : "stopped"
         );
+        if (action === "fresh-start") {
+          window.location.reload();
+        }
       }
     } catch (e) {
       console.error("Replay action failed", e);

@@ -7,7 +7,7 @@ Config is loaded from .env file.
 
 import os
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -26,39 +26,41 @@ DB_PASSWORD         = os.getenv("DB_PASSWORD", "")
 
 
 # ─────────────────────────────────────────
-# Build Connection String
+# Build Connection String & Engine
 # ─────────────────────────────────────────
-if DB_TRUSTED:
-    # Windows Authentication — no username/password needed
-    connection_string = (
-        f"mssql+pyodbc://{DB_HOST}/{DB_NAME}"
-        f"?driver=ODBC+Driver+17+for+SQL+Server"
-        f"&trusted_connection=yes"
+if DB_TYPE.lower() == "sqlite":
+    connection_string = "sqlite:///./navigatto.db"
+    engine = create_engine(
+        connection_string,
+        connect_args={"check_same_thread": False},
+        echo=False
     )
 else:
-    # SQL Server Authentication — username/password
-    connection_string = (
-        f"mssql+pyodbc://{DB_USER}:{DB_PASSWORD}"
-        f"@{DB_HOST}/{DB_NAME}"
-        f"?driver=ODBC+Driver+17+for+SQL+Server"
-        f"&Encrypt=yes"
-        f"&TrustServerCertificate=yes"
+    if DB_TRUSTED:
+        # Windows Authentication — no username/password needed
+        connection_string = (
+            f"mssql+pyodbc://{DB_HOST}/{DB_NAME}"
+            f"?driver=ODBC+Driver+17+for+SQL+Server"
+            f"&trusted_connection=yes"
+        )
+    else:
+        # SQL Server Authentication — username/password
+        connection_string = (
+            f"mssql+pyodbc://{DB_USER}:{DB_PASSWORD}"
+            f"@{DB_HOST}/{DB_NAME}"
+            f"?driver=ODBC+Driver+17+for+SQL+Server"
+            f"&Encrypt=yes"
+            f"&TrustServerCertificate=yes"
+        )
+    engine = create_engine(
+        connection_string,
+        echo=False,          # Set True to see raw SQL queries in terminal
+        fast_executemany=True
     )
-
-
-# ─────────────────────────────────────────
-# SQLAlchemy Engine & Session
-# ─────────────────────────────────────────
-engine = create_engine(
-    connection_string,
-    echo=False,          # Set True to see raw SQL queries in terminal
-    fast_executemany=True
-)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
-
 
 # ─────────────────────────────────────────
 # DB Dependency — used in routes.py
