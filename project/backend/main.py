@@ -87,15 +87,29 @@ class ReplayManager:
         await self.stop()
         try:
             db = SessionLocal()
-            db.execute(text("DELETE FROM dbo.fmc_raw_packets;"))
+
+            # Step 1: delete child table FIRST (FK constraint)
             db.execute(text("DELETE FROM dbo.journey_fuel_logs1;"))
+            db.commit()
+
+            # Step 2: now safe to delete parent table
+            db.execute(text("DELETE FROM dbo.fmc_raw_packets;"))
+            db.commit()
+
+            # Step 3: reset tracker
             db.execute(text(f"UPDATE dbo.replay_tracker SET last_historical_time = '{RESET_TIME}' WHERE id = 1;"))
             db.commit()
+
             db.close()
             print("[ReplayManager] Fresh start — tables cleared, tracker reset")
+
         except Exception as e:
             print(f"[ReplayManager] Fresh start DB error: {e}")
+            # ── KEY FIX: reset running state so button never gets stuck ──
+            self._running = False
+            self._task = None
             return {"status": "error", "detail": str(e)}
+
         return await self.start()
 
 replay_manager = ReplayManager()
