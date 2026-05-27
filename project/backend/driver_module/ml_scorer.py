@@ -1,6 +1,7 @@
 import os
 import joblib
 import numpy as np
+import pandas as pd
 from driver_module.scorer import calculate_trip_score, get_risk_level
 
 # ─────────────────────────────────────────────────────────────
@@ -155,8 +156,19 @@ def calculate_trip_score_ml(
         features = base_features
 
     # ── Step 4: Scale & Predict ──
-    features_arr    = np.array([features])
-    features_scaled = _scaler.transform(features_arr)
+    feature_cols = [
+        "accel_events", "brake_events", "over_speed_count", "cornering_events",
+        "idle_time_min", "distance_km", "trip_duration_min", "route_type",
+        "avg_speed_kmh", "max_speed_kmh", "num_stops", "avg_engine_rpm"
+    ]
+    if _ML_MODEL_VERSION == 2:
+        feature_cols += [
+            "accel_per_km", "brake_per_km", "speed_per_km", "corner_per_km",
+            "idle_pct", "speed_ratio", "rpm_per_speed"
+        ]
+
+    features_df     = pd.DataFrame([features], columns=feature_cols)
+    features_scaled = _scaler.transform(features_df)
     pred_score      = _model.predict(features_scaled)[0]
     final_score     = round(max(0.0, min(100.0, float(pred_score))), 2)
 
