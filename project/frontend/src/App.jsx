@@ -579,7 +579,7 @@ export default function App() {
             distance_km: parseFloat(Number(t.distance_km).toFixed(2)),
             duration_min: parseFloat(Number(t.trip_duration_min).toFixed(1)),
             driver_score: parseFloat(Number(t.final_score).toFixed(1)),
-            fuel_theft_detected: false,
+            fuel_theft_detected: t.fuel_theft_detected || false,
             maintenance_critical: false,
           }));
           setJourneys(normalized);
@@ -1651,11 +1651,17 @@ export default function App() {
                             <span className="text-[9px] text-slate-400 font-bold tracking-wide uppercase block mb-2">Suspected Forensics Check</span>
                             {journeyDetails.fuel_theft.detected ? (
                               <ul className="space-y-2 text-xs font-semibold text-slate-700">
+                                <div className="flex items-center justify-between mb-3 p-2.5 bg-rose-100/60 border border-rose-200 rounded-xl">
+                                    <span className="text-xs font-bold text-rose-700">Total Fuel Stolen</span>
+                                    <span className="text-sm font-black text-rose-700 font-outfit">
+                                        {journeyDetails.fuel_theft.total_theft_liters?.toFixed(2)} L
+                                    </span>
+                                </div>
                                 {journeyDetails.fuel_theft.reasons.map((r, ri) => (
-                                  <li key={ri} className="flex items-start gap-2 text-rose-600 bg-rose-50/50 border border-rose-100/50 p-2.5 rounded-xl">
-                                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
-                                    <span>{r}</span>
-                                  </li>
+                                    <li key={ri} className="flex items-start gap-2 text-rose-600 bg-rose-50/50 border border-rose-100/50 p-2.5 rounded-xl">
+                                        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
+                                        <span>{r}</span>
+                                    </li>
                                 ))}
                               </ul>
                             ) : (
