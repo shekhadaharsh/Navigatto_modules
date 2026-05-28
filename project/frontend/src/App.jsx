@@ -436,6 +436,7 @@ export default function App() {
   const [journeyDetails, setJourneyDetails] = useState(null);
   const [mobileViewTab, setMobileViewTab] = useState('drivers');
   const [isScoreCardFlipped, setIsScoreCardFlipped] = useState(false);
+  const [isMaintCardFlipped, setIsMaintCardFlipped] = useState(false);
 
   // --- LOADERS / CONTROL ---
   const [searchTerm, setSearchTerm] = useState('');
@@ -602,6 +603,7 @@ export default function App() {
     if (!activeJourneyId) return;
 
     setIsScoreCardFlipped(false);
+    setIsMaintCardFlipped(false);
 
     // Safety guard: prevent race conditions where stale mock or mismatched trip IDs are queried in live DB mode
     if (!isUsingMock) {
@@ -677,6 +679,44 @@ export default function App() {
     return () => es.close();
   }, [isUsingMock]);
 
+  // --- BACKGROUND FETCH VEHICLE COMPONENT WEAR DATA FOR CARD FLIP ---
+  useEffect(() => {
+    if (!journeyDetails) return;
+    const vid = journeyDetails.journey.vehicle_id || "VH001";
+
+    const fetchMaintHealth = async () => {
+      if (isUsingMock) {
+        const activeDriver = drivers.find(d => d.driver_id === activeDriverId);
+        const hs = journeyDetails.maintenance?.health_scores || { brake: 95.8, clutch: 78.8, tire: 98.1, battery: 100.0, engine: 92.5 };
+        setMaintHealthData({
+          vehicle_id: vid,
+          reg_no: activeDriver ? activeDriver.vehicle_id || "VH001" : "VH001",
+          make: activeDriver ? (activeDriver.vehicle_type === "Mini Truck" ? "Tata" : "BharatBenz") : "Tata",
+          model: activeDriver ? (activeDriver.vehicle_type === "Mini Truck" ? "Signa 4825.T" : "1914R") : "Signa 4825.T",
+          components: [
+            { component: "brake", accumulated_wear: parseFloat((20000.0 * (1 - hs.brake / 100)).toFixed(1)), base_life: 20000.0, rul: parseFloat((20000.0 * (hs.brake / 100)).toFixed(1)), health_score: hs.brake, status: hs.brake < 10 ? "critical" : (hs.brake < 30 ? "warning" : "ok"), last_updated: "2026-05-21 12:45" },
+            { component: "clutch", accumulated_wear: parseFloat((30000.0 * (1 - hs.clutch / 100)).toFixed(1)), base_life: 30000.0, rul: parseFloat((30000.0 * (hs.clutch / 100)).toFixed(1)), health_score: hs.clutch, status: hs.clutch < 10 ? "critical" : (hs.clutch < 30 ? "warning" : "ok"), last_updated: "2026-05-21 12:45" },
+            { component: "tire", accumulated_wear: parseFloat((120000.0 * (1 - hs.tire / 100)).toFixed(1)), base_life: 120000.0, rul: parseFloat((120000.0 * (hs.tire / 100)).toFixed(1)), health_score: hs.tire, status: hs.tire < 10 ? "critical" : (hs.tire < 30 ? "warning" : "ok"), last_updated: "2026-05-21 12:45" },
+            { component: "battery", accumulated_wear: parseFloat((5000.0 * (1 - hs.battery / 100)).toFixed(1)), base_life: 5000.0, rul: parseFloat((5000.0 * (hs.battery / 100)).toFixed(1)), health_score: hs.battery, status: hs.battery < 10 ? "critical" : (hs.battery < 30 ? "warning" : "ok"), last_updated: "2026-05-21 12:45" },
+            { component: "engine", accumulated_wear: parseFloat((50000.0 * (1 - hs.engine / 100)).toFixed(1)), base_life: 50000.0, rul: parseFloat((50000.0 * (hs.engine / 100)).toFixed(1)), health_score: hs.engine, status: hs.engine < 10 ? "critical" : (hs.engine < 30 ? "warning" : "ok"), last_updated: "2026-05-21 12:45" }
+          ]
+        });
+      } else {
+        try {
+          const resH = await fetch(`/api/maintenance/health/${vid}`);
+          if (resH.ok) {
+            const dataH = await resH.json();
+            setMaintHealthData(dataH);
+          }
+        } catch (err) {
+          console.error("Error pre-loading maintenance health:", err);
+        }
+      }
+    };
+
+    fetchMaintHealth();
+  }, [journeyDetails, isUsingMock, activeDriverId, drivers]);
+
 
 
   // --- 4. RECOMPUTE SAFETY MODELS ---
@@ -726,6 +766,7 @@ export default function App() {
     setMaintVehicleId(vid);
     setIsMaintDialogOpen(true);
     setIsLoadingMaintHealth(true);
+    setActiveMaintTab(vehicleId ? 'vehicle' : 'fleet');
 
     if (isUsingMock) {
       setTimeout(() => {
@@ -901,47 +942,63 @@ export default function App() {
 
       {/* -------------------- HEADER NAVBAR -------------------- */}
       <header className="h-16 flex items-center justify-between px-6 bg-white border-b border-slate-200/80 shrink-0 shadow-sm z-10">
-        <div className="flex items-center gap-3">
-          <div className="bg-brand-500 text-white p-2 rounded-xl shadow-brand-glow">
-            <Compass className="w-6 h-6 animate-spin-slow" />
+        <div className="flex items-center gap-8">
+          <div className="flex items-center gap-3">
+            <div className="bg-brand-500 text-white p-2 rounded-xl shadow-brand-glow">
+              <Compass className="w-6 h-6 animate-spin-slow" />
+            </div>
+            <div>
+              <h1 className="text-xl font-extrabold font-outfit text-slate-900 leading-tight tracking-tight">
+                FleetIQ <span className="text-brand-500 font-medium text-xs px-2 py-0.5 rounded-full bg-brand-50 ml-1 border border-brand-100">Live</span>
+              </h1>
+              <p className="text-[10px] text-slate-400 font-medium tracking-wide uppercase">Unified Fleet Intelligence Dashboard</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-extrabold font-outfit text-slate-900 leading-tight tracking-tight">
-              FleetIQ <span className="text-brand-500 font-medium text-xs px-2 py-0.5 rounded-full bg-brand-50 ml-1 border border-brand-100">Live</span>
-            </h1>
-            <p className="text-[10px] text-slate-400 font-medium tracking-wide uppercase">Unified Fleet Intelligence Dashboard</p>
+
+          {/* Global Stats Pill Bar (Shifted to Left next to logo) */}
+          <div className="hidden lg:flex items-center gap-6 text-xs font-semibold border-l border-slate-200 pl-6">
+            <button
+              onClick={() => setIsUsingMock(!isUsingMock)}
+              className={`flex items-center gap-2 px-3 py-1.5 border rounded-xl shadow-sm transition-all duration-300 ${isUsingMock
+                  ? 'bg-amber-50/70 border-amber-200 text-amber-700 hover:bg-amber-100/70 hover:shadow-sm'
+                  : 'bg-emerald-50/70 border-emerald-200 text-emerald-700 hover:bg-emerald-100/70 hover:shadow-sm'
+                }`}
+              title="Click to toggle between Live SQL Server and Demo Mock data"
+            >
+              <span className={`w-2.5 h-2.5 rounded-full ${isUsingMock ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500 pulse-glow-green'}`}></span>
+              <span className="text-slate-400 font-medium">Status:</span>
+              <span className="font-bold uppercase">
+                {isUsingMock ? "Demo Mock Data" : "Connected (SQL Server)"}
+              </span>
+              <RefreshCw className="w-3 h-3 ml-1 opacity-75" />
+            </button>
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400">Total Trips:</span>
+              <span className="text-slate-800 font-bold font-outfit text-sm">{(totalFleetTrips || 13548).toLocaleString()}</span>
+            </div>
+            <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
+            <div className="flex items-center gap-2">
+              <span className="text-slate-400">Distance Travelled:</span>
+              <span className="text-slate-800 font-bold font-outfit text-sm">{(totalFleetDist ? Math.round(totalFleetDist) : 5576000).toLocaleString()} km</span>
+            </div>
           </div>
         </div>
 
-        {/* Global Stats Pill Bar */}
-        <div className="hidden lg:flex items-center gap-6 text-xs font-semibold">
+        <div className="flex items-center gap-3">
+          {/* Vehicles Status Button */}
           <button
-            onClick={() => setIsUsingMock(!isUsingMock)}
-            className={`flex items-center gap-2 px-3 py-1.5 border rounded-xl shadow-sm transition-all duration-300 ${isUsingMock
-                ? 'bg-amber-50/70 border-amber-200 text-amber-700 hover:bg-amber-100/70 hover:shadow-sm'
-                : 'bg-emerald-50/70 border-emerald-200 text-emerald-700 hover:bg-emerald-100/70 hover:shadow-sm'
-              }`}
-            title="Click to toggle between Live SQL Server and Demo Mock data"
+            onClick={() => {
+              setIsMaintDialogOpen(true);
+              setActiveMaintTab('fleet');
+              openMaintenanceDashboard(null);
+            }}
+            className="flex items-center gap-2 px-3.5 py-2 bg-brand-500 hover:bg-brand-600 active:scale-95 text-white text-xs font-bold font-outfit rounded-xl transition-all cursor-pointer shadow-brand-glow border-0 outline-none hover:shadow-md hover:scale-[1.02]"
+            title="Open Vehicles Status Dashboard"
           >
-            <span className={`w-2.5 h-2.5 rounded-full ${isUsingMock ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500 pulse-glow-green'}`}></span>
-            <span className="text-slate-400 font-medium">Status:</span>
-            <span className="font-bold uppercase">
-              {isUsingMock ? "Demo Mock Data" : "Connected (SQL Server)"}
-            </span>
-            <RefreshCw className="w-3 h-3 ml-1 opacity-75" />
+            <Truck className="w-3.5 h-3.5" />
+            <span>Vehicles Status</span>
           </button>
-          <div className="flex items-center gap-2">
-            <span className="text-slate-400">Total Trips:</span>
-            <span className="text-slate-800 font-bold font-outfit text-sm">{(totalFleetTrips || 13548).toLocaleString()}</span>
-          </div>
-          <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
-          <div className="flex items-center gap-2">
-            <span className="text-slate-400">Distance Travelled:</span>
-            <span className="text-slate-800 font-bold font-outfit text-sm">{(totalFleetDist ? Math.round(totalFleetDist) : 5576000).toLocaleString()} km</span>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-3">
           <ReplayControl />
           <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 hover:text-brand-500 transition-colors cursor-pointer">
             <User className="w-4.5 h-4.5" />
@@ -1778,134 +1835,228 @@ export default function App() {
                           </div>
                         </div>
 
-                        {/* -------------------- CARD 4: VEHICLE MAINTENANCE DIAGNOSTIC -------------------- */}
-                        <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-premium flex flex-col justify-between hover:shadow-premium-lg transition-shadow">
-                          <div>
-                            <div className="flex items-center justify-between border-b border-slate-100 pb-3.5 mb-4">
-                              <h3 className="text-sm font-extrabold text-slate-800 font-outfit tracking-wide flex items-center gap-2 uppercase">
-                                <Wrench className="w-4.5 h-4.5 text-brand-500" /> Vehicle Maintenance diagnostics
-                              </h3>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  onClick={() => openMaintenanceDashboard(journeyDetails.journey.vehicle_id)}
-                                  className="text-[10px] bg-brand-50 hover:bg-brand-100 border border-brand-200 text-brand-700 px-2.5 py-1 rounded-xl font-bold transition-all flex items-center gap-1 cursor-pointer shadow-sm active:scale-95"
-                                >
-                                  <Activity className="w-3.5 h-3.5" /> Wear Details
-                                </button>
-                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${journeyDetails.maintenance.priority === 'Critical'
-                                    ? 'bg-rose-50 text-rose-700 border-rose-200'
-                                    : (journeyDetails.maintenance.priority === 'Warning'
-                                      ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                      : 'bg-emerald-50 text-emerald-700 border-emerald-200')
-                                  }`}>
-                                  {journeyDetails.maintenance.priority}
-                                </span>
-                              </div>
-                            </div>
-
-                            {/* Sensory parameters diagnostics */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-4 mb-4">
-                              <div className={`p-3 rounded-2xl border transition-all ${journeyDetails.journey.external_voltage < 11.5 ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200/40'
-                                }`}>
-                                <div className="flex items-center gap-2 text-slate-400 mb-1.5">
-                                  <Battery className={`w-4.5 h-4.5 ${journeyDetails.journey.external_voltage < 11.5 ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`} />
-                                  <span className="text-[10px] font-bold uppercase">Battery Voltage</span>
-                                </div>
-                                <p className={`text-base font-black font-outfit ${journeyDetails.journey.external_voltage < 11.5 ? 'text-rose-700' : 'text-slate-800'}`}>
-                                  {(journeyDetails.journey.external_voltage || 0).toFixed(1)} V
-                                </p>
-                              </div>
-
-                              <div className={`p-3 rounded-2xl border transition-all ${journeyDetails.journey.dallas_temp_celsius > 100.0 ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200/40'
-                                }`}>
-                                <div className="flex items-center gap-2 text-slate-400 mb-1.5">
-                                  <Thermometer className={`w-4.5 h-4.5 ${journeyDetails.journey.dallas_temp_celsius > 100.0 ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`} />
-                                  <span className="text-[10px] font-bold uppercase">Engine Temp</span>
-                                </div>
-                                <p className={`text-base font-black font-outfit ${journeyDetails.journey.dallas_temp_celsius > 100.0 ? 'text-rose-700' : 'text-slate-800'}`}>
-                                  {(journeyDetails.journey.dallas_temp_celsius || 0).toFixed(1)}°C
-                                </p>
-                              </div>
-                            </div>
-
-                            {/* Component Wear Health Scores Grid */}
-                            <div className="border-t border-slate-100 pt-4 mt-1 mb-4 space-y-3">
-                              <span className="text-[9px] text-slate-400 font-bold tracking-wide uppercase block">Component Wear Health Scores</span>
-                              <div className="grid grid-cols-1 gap-2.5">
-                                {(() => {
-                                  const scores = journeyDetails.maintenance?.health_scores || {
-                                    brake: 100, clutch: 100, tire: 100, battery: 100, engine: 100
-                                  };
-                                  return Object.entries(scores).map(([comp, val]) => {
-                                    const scoreVal = val ?? 100;
-                                    const isCrit = scoreVal < 10;
-                                    const isWarn = scoreVal >= 10 && scoreVal < 30;
-
-                                    let colorClass = "from-emerald-500 to-teal-500";
-                                    let textClass = "text-emerald-600 bg-emerald-50 border-emerald-100";
-                                    if (isCrit) {
-                                      colorClass = "from-rose-500 to-red-600";
-                                      textClass = "text-rose-600 bg-rose-50 border-rose-100";
-                                    } else if (isWarn) {
-                                      colorClass = "from-amber-500 to-orange-500";
-                                      textClass = "text-amber-600 bg-amber-50 border-amber-100";
-                                    }
-
-                                    return (
-                                      <div key={comp} className="flex items-center justify-between gap-3 text-xs font-semibold">
-                                        <span className="w-16 capitalize text-slate-600 truncate">{comp}</span>
-                                        <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden relative shadow-inner">
-                                          <div
-                                            className={`h-full rounded-full bg-gradient-to-r ${colorClass} transition-all duration-1000`}
-                                            style={{ width: `${Math.max(0, Math.min(100, scoreVal))}%` }}
-                                          ></div>
-                                        </div>
-                                        <span className={`text-[9.5px] font-bold font-outfit px-1.5 py-0.5 rounded border select-none shrink-0 w-11 text-center ${textClass}`}>
-                                          {scoreVal.toFixed(0)}%
-                                        </span>
-                                      </div>
-                                    );
-                                  });
-                                })()}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Diagnostics list */}
-                          <div className="bg-slate-50 rounded-2xl border border-slate-200/50 p-4 flex-1 flex flex-col justify-center">
-                            <span className="text-[9px] text-slate-400 font-bold tracking-wide uppercase block mb-2">Predictive Issue Analyzer</span>
-                            {journeyDetails.maintenance.alerts.length > 0 ? (
-                              <div className="space-y-2.5">
-                                {journeyDetails.maintenance.alerts.map((a, ai) => (
-                                  <div key={ai} className={`text-xs p-2.5 rounded-xl border flex items-start gap-2.5 ${a.severity === 'Critical'
-                                      ? 'bg-rose-50/50 border-rose-100 text-rose-700'
-                                      : 'bg-amber-50/50 border-amber-100 text-amber-700'
-                                    }`}>
-                                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-                                    <div className="flex-1">
-                                      <div className="flex items-start justify-between gap-2">
-                                        <p className="font-extrabold font-outfit leading-none mb-1">{a.issue}</p>
-                                        {a.id && (
-                                          <button
-                                            onClick={() => handleAckAlert(a.id)}
-                                            className="text-[9px] font-bold bg-white/80 hover:bg-white text-slate-700 px-1.5 py-0.5 rounded-md border border-slate-200 shadow-sm transition-all cursor-pointer select-none active:scale-95 shrink-0"
-                                          >
-                                            Resolve
-                                          </button>
-                                        )}
-                                      </div>
-                                      <p className="text-[11px] font-semibold text-slate-500 leading-snug">{a.detail}</p>
-                                    </div>
+                        {/* -------------------- CARD 4: VEHICLE MAINTENANCE DIAGNOSTIC WITH 3D FLIP -------------------- */}
+                        <div
+                          className="w-full perspective-1000 select-none cursor-pointer"
+                          onClick={() => {
+                            setIsMaintCardFlipped(!isMaintCardFlipped);
+                          }}
+                          style={{ minHeight: '520px' }}
+                        >
+                          <div
+                            className={`relative w-full transition-transform duration-700 preserve-3d h-full ${isMaintCardFlipped ? 'rotate-y-180' : ''}`}
+                            style={{ transformStyle: 'preserve-3d', minHeight: '520px' }}
+                          >
+                            {/* FRONT FACE */}
+                            <div
+                              className="absolute inset-0 w-full h-full backface-hidden bg-white rounded-3xl border border-slate-200/80 p-6 shadow-premium hover:shadow-premium-lg transition-all flex flex-col justify-between z-10"
+                              style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden' }}
+                            >
+                              <div>
+                                <div className="flex items-center justify-between border-b border-slate-100 pb-3.5 mb-4">
+                                  <h3 className="text-sm font-extrabold text-slate-800 font-outfit tracking-wide flex items-center gap-2 uppercase">
+                                    <Wrench className="w-4.5 h-4.5 text-brand-500" /> Vehicle Maintenance diagnostics
+                                  </h3>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsMaintCardFlipped(true);
+                                      }}
+                                      className="text-[10px] bg-brand-50 hover:bg-brand-100 border border-brand-200 text-brand-700 px-2.5 py-1 rounded-xl font-bold transition-all flex items-center gap-1 cursor-pointer shadow-sm active:scale-95"
+                                    >
+                                      <Activity className="w-3.5 h-3.5" /> Wear Details
+                                    </button>
+                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${journeyDetails.maintenance.priority === 'Critical'
+                                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                        : (journeyDetails.maintenance.priority === 'Warning'
+                                          ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                          : 'bg-emerald-50 text-emerald-700 border-emerald-200')
+                                      }`}>
+                                      {journeyDetails.maintenance.priority}
+                                    </span>
                                   </div>
-                                ))}
+                                </div>
+
+                                {/* Sensory parameters diagnostics */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-4 mb-4">
+                                  <div className={`p-3 rounded-2xl border transition-all ${journeyDetails.journey.external_voltage < 11.5 ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200/40'
+                                    }`}>
+                                    <div className="flex items-center gap-2 text-slate-400 mb-1.5">
+                                      <Battery className={`w-4.5 h-4.5 ${journeyDetails.journey.external_voltage < 11.5 ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`} />
+                                      <span className="text-[10px] font-bold uppercase">Battery Voltage</span>
+                                    </div>
+                                    <p className={`text-base font-black font-outfit ${journeyDetails.journey.external_voltage < 11.5 ? 'text-rose-700' : 'text-slate-800'}`}>
+                                      {(journeyDetails.journey.external_voltage || 0).toFixed(1)} V
+                                    </p>
+                                  </div>
+
+                                  <div className={`p-3 rounded-2xl border transition-all ${journeyDetails.journey.dallas_temp_celsius > 100.0 ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200/40'
+                                    }`}>
+                                    <div className="flex items-center gap-2 text-slate-400 mb-1.5">
+                                      <Thermometer className={`w-4.5 h-4.5 ${journeyDetails.journey.dallas_temp_celsius > 100.0 ? 'text-rose-500 animate-pulse' : 'text-slate-400'}`} />
+                                      <span className="text-[10px] font-bold uppercase">Engine Temp</span>
+                                    </div>
+                                    <p className={`text-base font-black font-outfit ${journeyDetails.journey.dallas_temp_celsius > 100.0 ? 'text-rose-700' : 'text-slate-800'}`}>
+                                      {(journeyDetails.journey.dallas_temp_celsius || 0).toFixed(1)}°C
+                                    </p>
+                                  </div>
+                                </div>
+
+                                {/* Component Wear Health Scores Grid */}
+                                <div className="border-t border-slate-100 pt-4 mt-1 mb-4 space-y-3">
+                                  <span className="text-[9px] text-slate-400 font-bold tracking-wide uppercase block">Component Wear Health Scores</span>
+                                  <div className="grid grid-cols-1 gap-2.5">
+                                    {(() => {
+                                      const scores = journeyDetails.maintenance?.health_scores || {
+                                        brake: 100, clutch: 100, tire: 100, battery: 100, engine: 100
+                                      };
+                                      return Object.entries(scores).map(([comp, val]) => {
+                                        const scoreVal = val ?? 100;
+                                        const isCrit = scoreVal < 10;
+                                        const isWarn = scoreVal >= 10 && scoreVal < 30;
+
+                                        let colorClass = "from-emerald-500 to-teal-500";
+                                        let textClass = "text-emerald-600 bg-emerald-50 border-emerald-100";
+                                        if (isCrit) {
+                                          colorClass = "from-rose-500 to-red-600";
+                                          textClass = "text-rose-600 bg-rose-50 border-rose-100";
+                                        } else if (isWarn) {
+                                          colorClass = "from-amber-500 to-orange-500";
+                                          textClass = "text-amber-600 bg-amber-50 border-amber-100";
+                                        }
+
+                                        return (
+                                          <div key={comp} className="flex items-center justify-between gap-3 text-xs font-semibold">
+                                            <span className="w-16 capitalize text-slate-600 truncate">{comp}</span>
+                                            <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden relative shadow-inner">
+                                              <div
+                                                className={`h-full rounded-full bg-gradient-to-r ${colorClass} transition-all duration-1000`}
+                                                style={{ width: `${Math.max(0, Math.min(100, scoreVal))}%` }}
+                                              ></div>
+                                            </div>
+                                            <span className={`text-[9.5px] font-bold font-outfit px-1.5 py-0.5 rounded border select-none shrink-0 w-11 text-center ${textClass}`}>
+                                              {scoreVal.toFixed(0)}%
+                                            </span>
+                                          </div>
+                                        );
+                                      });
+                                    })()}
+                                  </div>
+                                </div>
                               </div>
-                            ) : (
-                              <div className="text-center py-4 space-y-1 text-slate-400">
-                                <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
-                                <p className="text-xs font-bold text-slate-700 font-outfit">All Vehicle Systems Healthy</p>
-                                <p className="text-[10px] font-semibold max-w-[200px] mx-auto">Sensors verify braking, cornering forces, and engine heat are optimal.</p>
+
+                              {/* Diagnostics list */}
+                              <div className="bg-slate-50 rounded-2xl border border-slate-200/50 p-4 flex-1 flex flex-col justify-center">
+                                <span className="text-[9px] text-slate-400 font-bold tracking-wide uppercase block mb-2">Predictive Issue Analyzer</span>
+                                {journeyDetails.maintenance.alerts.length > 0 ? (
+                                  <div className="space-y-2.5">
+                                    {journeyDetails.maintenance.alerts.map((a, ai) => (
+                                      <div key={ai} className={`text-xs p-2.5 rounded-xl border flex items-start gap-2.5 ${a.severity === 'Critical'
+                                          ? 'bg-rose-50/50 border-rose-100 text-rose-700'
+                                          : 'bg-amber-50/50 border-amber-100 text-amber-700'
+                                        }`}>
+                                        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                                        <div className="flex-1">
+                                          <div className="flex items-start justify-between gap-2">
+                                            <p className="font-extrabold font-outfit leading-none mb-1">{a.issue}</p>
+                                            {a.id && (
+                                              <button
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleAckAlert(a.id);
+                                                }}
+                                                className="text-[9px] font-bold bg-white/80 hover:bg-white text-slate-700 px-1.5 py-0.5 rounded-md border border-slate-200 shadow-sm transition-all cursor-pointer select-none active:scale-95 shrink-0"
+                                              >
+                                                Resolve
+                                              </button>
+                                            )}
+                                          </div>
+                                          <p className="text-[11px] font-semibold text-slate-500 leading-snug">{a.detail}</p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <div className="text-center py-4 space-y-1 text-slate-400">
+                                    <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto" />
+                                    <p className="text-xs font-bold text-slate-700 font-outfit">All Vehicle Systems Healthy</p>
+                                    <p className="text-[10px] font-semibold max-w-[200px] mx-auto">Sensors verify braking, cornering forces, and engine heat are optimal.</p>
+                                  </div>
+                                )}
                               </div>
-                            )}
+                            </div>
+
+                            {/* BACK FACE */}
+                            <div
+                              className="absolute inset-0 w-full h-full backface-hidden rotate-y-180 bg-white rounded-3xl border border-slate-200/80 p-6 shadow-premium hover:shadow-premium-lg transition-all flex flex-col justify-between z-0"
+                              style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
+                            >
+                              <div className="flex-1 flex flex-col min-h-0">
+                                <div className="flex items-center justify-between border-b border-slate-100 pb-3.5 mb-4 shrink-0">
+                                  <h3 className="text-sm font-extrabold text-slate-800 font-outfit tracking-wide flex items-center gap-2 uppercase">
+                                    <Activity className="w-4.5 h-4.5 text-brand-500" /> Wear Details &amp; RUL
+                                  </h3>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setIsMaintCardFlipped(false);
+                                    }}
+                                    className="text-[9px] bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-500 px-2 py-0.5 rounded-full font-bold transition-all cursor-pointer"
+                                  >
+                                    Back to Summary
+                                  </button>
+                                </div>
+
+                                {/* Component items scrollable container */}
+                                <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+                                  {maintHealthData && maintHealthData.components ? (
+                                    maintHealthData.components.map((c, ci) => {
+                                      const isCrit = c.health_score < 10.0;
+                                      const isWarn = c.health_score >= 10.0 && c.health_score < 30.0;
+                                      const colorClass = isCrit ? 'text-rose-600 bg-rose-50 border-rose-100' : isWarn ? 'text-amber-600 bg-amber-50 border-amber-100' : 'text-emerald-600 bg-emerald-50 border-emerald-100';
+                                      const progressColor = isCrit ? 'from-rose-500 to-red-600' : isWarn ? 'from-amber-500 to-orange-500' : 'from-emerald-500 to-teal-500';
+
+                                      return (
+                                        <div key={ci} className="bg-slate-50/70 border border-slate-200/40 p-3 rounded-2xl flex items-center gap-3 hover:bg-slate-50 transition-all">
+                                          <div className="p-2 bg-white rounded-xl shadow-sm text-slate-500 shrink-0">
+                                            {c.component === "brake" ? <Wrench className="w-4 h-4 text-brand-500" /> :
+                                              c.component === "clutch" ? <Activity className="w-4 h-4 text-brand-500" /> :
+                                                c.component === "tire" ? <Compass className="w-4 h-4 text-brand-500" /> :
+                                                  c.component === "battery" ? <Battery className="w-4 h-4 text-brand-500" /> :
+                                                    <Thermometer className="w-4 h-4 text-brand-500" />}
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex justify-between items-center mb-1">
+                                              <span className="text-xs font-black text-slate-800 uppercase font-outfit">{c.component}</span>
+                                              <span className={`text-[9.5px] font-bold font-outfit px-1.5 py-0.5 rounded border select-none shrink-0 text-center ${colorClass}`}>
+                                                {c.health_score.toFixed(0)}% Health
+                                              </span>
+                                            </div>
+                                            <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden relative shadow-inner mb-2">
+                                              <div
+                                                className={`h-full rounded-full bg-gradient-to-r ${progressColor} transition-all duration-1000`}
+                                                style={{ width: `${Math.max(0, Math.min(100, c.health_score))}%` }}
+                                              ></div>
+                                            </div>
+                                            <div className="flex justify-between text-[9px] text-slate-400 font-bold">
+                                              <span>RUL: <strong className="text-slate-600 font-extrabold">{Math.round(c.rul).toLocaleString()} units</strong></span>
+                                              <span>Wear: <strong className="text-slate-600 font-extrabold">{parseFloat(c.accumulated_wear).toFixed(0)} units</strong></span>
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })
+                                  ) : (
+                                    <div className="h-40 flex flex-col items-center justify-center gap-2">
+                                      <RefreshCw className="w-5 h-5 text-brand-500 animate-spin" />
+                                      <span className="text-[10px] text-slate-400 font-bold">Loading components wear...</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
                           </div>
                         </div>
 
@@ -1939,20 +2090,15 @@ export default function App() {
 
                       {/* Tabs */}
                       <div className="flex items-center gap-2 bg-slate-200/60 p-1 rounded-2xl">
-                        <button
-                          onClick={() => setActiveMaintTab('vehicle')}
-                          className={`px-4 py-2 text-xs font-bold font-outfit rounded-xl transition-all cursor-pointer ${activeMaintTab === 'vehicle' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-                            }`}
-                        >
-                          <Activity className="w-3.5 h-3.5 inline mr-1" /> Vehicle Wear & RUL
-                        </button>
-                        <button
-                          onClick={() => setActiveMaintTab('fleet')}
-                          className={`px-4 py-2 text-xs font-bold font-outfit rounded-xl transition-all cursor-pointer ${activeMaintTab === 'fleet' ? 'bg-white text-brand-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'
-                            }`}
-                        >
-                          <Truck className="w-3.5 h-3.5 inline mr-1" /> Fleet Diagnostics Summary
-                        </button>
+                        {activeMaintTab === 'vehicle' ? (
+                          <span className="px-4 py-2 text-xs font-bold font-outfit rounded-xl bg-white text-brand-600 shadow-sm flex items-center gap-1 select-none">
+                            <Activity className="w-3.5 h-3.5" /> Vehicle Wear & RUL
+                          </span>
+                        ) : (
+                          <span className="px-4 py-2 text-xs font-bold font-outfit rounded-xl bg-white text-brand-600 shadow-sm flex items-center gap-1 select-none">
+                            <Truck className="w-3.5 h-3.5" /> Vehicles Status
+                          </span>
+                        )}
                       </div>
 
                       {/* Close Button */}
