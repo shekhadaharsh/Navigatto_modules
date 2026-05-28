@@ -3,6 +3,6 @@ venv/
 file.txt
 navigatto_new_DB.sql
 
-
+*.txt
 __pycache__/
 *.pyc
