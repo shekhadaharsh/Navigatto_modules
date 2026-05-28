@@ -38,12 +38,14 @@ export default function ReplayControl() {
       const data = await res.json();
       if (action === "stop") {
         setStatus("stopped");
+        window.dispatchEvent(new Event("replay-stopped"));
       } else if (action === "start" || action === "fresh-start") {
         setStatus(
           data.status === "started" || data.status === "already_running"
             ? "running"
             : "stopped"
         );
+        window.dispatchEvent(new Event("replay-started"));
         if (action === "fresh-start") {
           window.location.reload();
         }

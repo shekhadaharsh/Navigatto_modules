@@ -1,6 +1,6 @@
 import ReplayControl from './ReplayControl';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Compass, Search, Truck, Calendar, Clock, Navigation, MapPin, Gauge,
   ShieldAlert, ShieldCheck, Droplet, Wrench, RefreshCw, AlertTriangle,
@@ -472,6 +472,26 @@ export default function App() {
   const [fuelAlerts, setFuelAlerts] = useState([]);
   const [activeFuelAlert, setActiveFuelAlert] = useState(null);
   const [showAlertToast, setShowAlertToast] = useState(false);
+  const dismissedToastIdsRef = useRef(new Set());
+  const isAlertsMutedRef = useRef(false);
+
+  useEffect(() => {
+    const handleStop = () => {
+      isAlertsMutedRef.current = true;
+      setShowAlertToast(false);
+      setActiveFuelAlert(null);
+    };
+    const handleStart = () => {
+      isAlertsMutedRef.current = false;
+      dismissedToastIdsRef.current.clear();
+    };
+    window.addEventListener('replay-stopped', handleStop);
+    window.addEventListener('replay-started', handleStart);
+    return () => {
+      window.removeEventListener('replay-stopped', handleStop);
+      window.removeEventListener('replay-started', handleStart);
+    };
+  }, []);
 
   // --- 1. LOAD DRIVERS ---
   useEffect(() => {
@@ -697,11 +717,15 @@ export default function App() {
             };
             
             updatedAlerts.splice(existingIdx, 1);
-            setShowAlertToast(true);
+            if (!dismissedToastIdsRef.current.has(`${mergedAlert.driver_id}-${mergedAlert.trip_id}`) && !isAlertsMutedRef.current) {
+              setShowAlertToast(true);
+            }
             return [mergedAlert, ...updatedAlerts].slice(0, 20);
           }
 
-          setShowAlertToast(true);
+          if (!dismissedToastIdsRef.current.has(`${payload.driver_id}-${payload.trip_id}`) && !isAlertsMutedRef.current) {
+            setShowAlertToast(true);
+          }
           return [payload, ...prev].slice(0, 20);
         });
       } catch (_) { }
@@ -960,6 +984,10 @@ export default function App() {
             onClick={(e) => {
               e.stopPropagation();
               setShowAlertToast(false);
+              isAlertsMutedRef.current = true;
+              if (fuelAlerts[0]) {
+                dismissedToastIdsRef.current.add(`${fuelAlerts[0].driver_id}-${fuelAlerts[0].trip_id}`);
+              }
             }}
             className="text-white/60 hover:text-white transition-colors p-0.5 rounded-lg hover:bg-white/10 border-0 outline-none cursor-pointer shrink-0"
           >
@@ -2467,7 +2495,13 @@ export default function App() {
                       </span>
                     </div>
                   <button
-                    onClick={() => setActiveFuelAlert(null)}
+                    onClick={() => {
+                      setActiveFuelAlert(null);
+                      isAlertsMutedRef.current = true;
+                      if (activeFuelAlert) {
+                        dismissedToastIdsRef.current.add(`${activeFuelAlert.driver_id}-${activeFuelAlert.trip_id}`);
+                      }
+                    }}
                     className="text-white/70 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10 border-0 outline-none cursor-pointer"
                   >
                     <XCircle className="w-5 h-5" />
