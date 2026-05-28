@@ -19,13 +19,36 @@ export default function ReplayControl() {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Poll status on mount
+  // Poll status on mount and periodically to sync with other users
   useEffect(() => {
     if (!ENABLE_MANUAL) return;
-    fetch("/api/replay/status")
-      .then((r) => r.json())
-      .then((d) => setStatus(d.running ? "running" : "stopped"))
-      .catch(() => setStatus("stopped"));
+    
+    const checkStatus = () => {
+      fetch("/api/replay/status")
+        .then((r) => r.json())
+        .then((d) => {
+          const newStatus = d.running ? "running" : "stopped";
+          setStatus((prev) => {
+            if (prev !== newStatus) {
+              const eventName = newStatus === "running" ? "replay-started" : "replay-stopped";
+              window.dispatchEvent(new CustomEvent(eventName, { detail: { local: false } }));
+            }
+            return newStatus;
+          });
+        })
+        .catch(() => {
+          setStatus((prev) => {
+            if (prev !== "stopped") {
+              window.dispatchEvent(new CustomEvent("replay-stopped", { detail: { local: false } }));
+            }
+            return "stopped";
+          });
+        });
+    };
+
+    checkStatus();
+    const intervalId = setInterval(checkStatus, 3000);
+    return () => clearInterval(intervalId);
   }, []);
 
   if (!ENABLE_MANUAL) return null;
@@ -38,14 +61,16 @@ export default function ReplayControl() {
       const data = await res.json();
       if (action === "stop") {
         setStatus("stopped");
-        window.dispatchEvent(new Event("replay-stopped"));
+        localStorage.setItem("is_replay_controller", "false");
+        window.dispatchEvent(new CustomEvent("replay-stopped", { detail: { local: true } }));
       } else if (action === "start" || action === "fresh-start") {
         setStatus(
           data.status === "started" || data.status === "already_running"
             ? "running"
             : "stopped"
         );
-        window.dispatchEvent(new Event("replay-started"));
+        localStorage.setItem("is_replay_controller", "true");
+        window.dispatchEvent(new CustomEvent("replay-started", { detail: { local: true } }));
         if (action === "fresh-start") {
           window.location.reload();
         }
