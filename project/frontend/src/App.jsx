@@ -473,17 +473,23 @@ export default function App() {
   const [activeFuelAlert, setActiveFuelAlert] = useState(null);
   const [showAlertToast, setShowAlertToast] = useState(false);
   const dismissedToastIdsRef = useRef(new Set());
-  const isAlertsMutedRef = useRef(false);
+  const isControllerRef = useRef(localStorage.getItem("is_replay_controller") === "true");
 
   useEffect(() => {
-    const handleStop = () => {
-      isAlertsMutedRef.current = true;
+    const handleStop = (e) => {
       setShowAlertToast(false);
       setActiveFuelAlert(null);
+      if (e.detail?.local) {
+        isControllerRef.current = false;
+      }
     };
-    const handleStart = () => {
-      isAlertsMutedRef.current = false;
+    const handleStart = (e) => {
       dismissedToastIdsRef.current.clear();
+      if (e.detail?.local !== undefined) {
+        isControllerRef.current = e.detail.local;
+      } else {
+        isControllerRef.current = localStorage.getItem("is_replay_controller") === "true";
+      }
     };
     window.addEventListener('replay-stopped', handleStop);
     window.addEventListener('replay-started', handleStart);
@@ -717,13 +723,13 @@ export default function App() {
             };
             
             updatedAlerts.splice(existingIdx, 1);
-            if (!dismissedToastIdsRef.current.has(`${mergedAlert.driver_id}-${mergedAlert.trip_id}`) && !isAlertsMutedRef.current) {
+            if (!dismissedToastIdsRef.current.has(`${mergedAlert.driver_id}-${mergedAlert.trip_id}`)) {
               setShowAlertToast(true);
             }
             return [mergedAlert, ...updatedAlerts].slice(0, 20);
           }
 
-          if (!dismissedToastIdsRef.current.has(`${payload.driver_id}-${payload.trip_id}`) && !isAlertsMutedRef.current) {
+          if (!dismissedToastIdsRef.current.has(`${payload.driver_id}-${payload.trip_id}`)) {
             setShowAlertToast(true);
           }
           return [payload, ...prev].slice(0, 20);
@@ -984,8 +990,7 @@ export default function App() {
             onClick={(e) => {
               e.stopPropagation();
               setShowAlertToast(false);
-              isAlertsMutedRef.current = true;
-              if (fuelAlerts[0]) {
+              if (!isControllerRef.current && fuelAlerts[0]) {
                 dismissedToastIdsRef.current.add(`${fuelAlerts[0].driver_id}-${fuelAlerts[0].trip_id}`);
               }
             }}
@@ -2497,8 +2502,7 @@ export default function App() {
                   <button
                     onClick={() => {
                       setActiveFuelAlert(null);
-                      isAlertsMutedRef.current = true;
-                      if (activeFuelAlert) {
+                      if (!isControllerRef.current && activeFuelAlert) {
                         dismissedToastIdsRef.current.add(`${activeFuelAlert.driver_id}-${activeFuelAlert.trip_id}`);
                       }
                     }}
