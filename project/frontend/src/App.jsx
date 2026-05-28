@@ -40,7 +40,62 @@ const MOCK_VEHICLES = {
   "DR010": { "vehicle_id": "VH010", "vehicle_type": "Mini Truck", "total_odometer_km": 142100.0, "engine_total_hours": 2980.1, "last_service_km": 139000.0 }
 };
 
+// ── Free OpenStreetMap Mini-Map for Fuel Theft Modal ──
+function TheftLocationMap({ lat, lng }) {
+  const mapRef = React.useRef(null);
+  const mapInstanceRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!lat || !lng || !mapRef.current) return;
+    if (mapInstanceRef.current) {
+      mapInstanceRef.current.remove();
+      mapInstanceRef.current = null;
+    }
+    const map = L.map(mapRef.current, {
+      center: [lat, lng],
+      zoom: 14,
+      zoomControl: true,
+      scrollWheelZoom: false,
+    });
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      maxZoom: 19,
+    }).addTo(map);
+    const redIcon = L.divIcon({
+      className: "",
+      html: `<div style="width:22px;height:22px;background:#ef4444;border:3px solid white;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 6px rgba(0,0,0,0.4);"></div>`,
+      iconSize: [22, 22],
+      iconAnchor: [11, 22],
+    });
+    L.marker([lat, lng], { icon: redIcon })
+      .addTo(map)
+      .bindPopup("⛽ Theft Location")
+      .openPopup();
+    mapInstanceRef.current = map;
+    return () => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
+    };
+  }, [lat, lng]);
+
+  if (!lat || !lng) return <div className="text-xs text-slate-400 italic">No GPS data available</div>;
+  return (
+    <div style={{ borderRadius: "10px", overflow: "hidden", border: "1px solid #e2e8f0" }}>
+      <div ref={mapRef} style={{ height: "160px", width: "100%" }} />
+      <div style={{ fontSize: "11px", color: "#64748b", padding: "4px 8px", background: "#f8fafc", borderTop: "1px solid #e2e8f0" }}>
+        📍 {lat.toFixed(5)}, {lng.toFixed(5)}
+      </div>
+    </div>
+  );
+}
+
+
+
+
 const generateMockJourneys = (driverId) => {
+
   const driver = MOCK_DRIVERS.find(d => d.driver_id === driverId) || MOCK_DRIVERS[0];
   const vehicle = MOCK_VEHICLES[driverId] || MOCK_VEHICLES["DR001"];
   const list = [];
@@ -2481,9 +2536,10 @@ export default function App() {
               className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
               onClick={() => setActiveFuelAlert(null)}
             >
-              <div className="relative flex items-start w-full max-w-md">
+              <div className="relative flex items-start w-full max-w-2xl">
                 <div
-                  className="bg-white rounded-3xl shadow-2xl w-full overflow-hidden animate-slide-up shrink-0"
+                  className="bg-white rounded-3xl shadow-2xl w-full overflow-hidden animate-slide-up shrink-0 max-h-[90vh] flex flex-col"
+                  style={{ maxWidth: '680px' }}
                   onClick={e => e.stopPropagation()}
                 >
                   {/* Modal Header */}
@@ -2509,7 +2565,7 @@ export default function App() {
                 </div>
 
                 {/* Modal Body */}
-                <div className="p-6 space-y-4">
+                <div className="p-6 space-y-4 overflow-y-auto flex-1">
                   {/* Human-readable theft description */}
                   <div className={`px-4 py-3 rounded-2xl border text-sm font-bold flex items-start gap-3 ${activeFuelAlert.theft_type === 'IGNITION_OFF_DROP'
                       ? 'bg-rose-50 border-rose-200 text-rose-700'
@@ -2565,11 +2621,9 @@ export default function App() {
                       <p className="text-xs font-bold text-slate-700">{activeFuelAlert.trip_id}</p>
                     </div>
                     {activeFuelAlert.gps_lat && activeFuelAlert.gps_lng && (
-                      <div className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl col-span-2">
-                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide mb-0.5">GPS Location</p>
-                        <p className="text-xs font-bold text-slate-700">
-                          {activeFuelAlert.gps_lat?.toFixed(5)}, {activeFuelAlert.gps_lng?.toFixed(5)}
-                        </p>
+                      <div className="col-span-2">
+                        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">GPS Location</p>
+                        <TheftLocationMap lat={activeFuelAlert.gps_lat} lng={activeFuelAlert.gps_lng} />
                       </div>
                     )}
                   </div>
