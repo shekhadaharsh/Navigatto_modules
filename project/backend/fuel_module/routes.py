@@ -15,6 +15,7 @@ from sqlalchemy import func
 
 from database.db import get_db, SessionLocal
 from fuel_module.models import JourneyFuelLog1, FmcRawPacket
+from driver_module.model import Driver
 from fuel_module.schema import FuelTheftResponse, FuelTheftEvent
 
 router = APIRouter(prefix="/fuel", tags=["Fuel Theft Detection"])
@@ -186,10 +187,15 @@ async def event_generator(request: Request):
 
             if new_thefts:
                 for log, pkt in new_thefts:
+                    # Look up driver name from drivers table
+                    driver_obj = db.query(Driver).filter(Driver.driver_id == pkt.driver_id).first()
+                    driver_name = driver_obj.driver_name if (driver_obj and driver_obj.driver_name) else pkt.driver_id
+
                     # Construct the event payload
                     payload = {
                         "alert_id": log.id,
                         "driver_id": pkt.driver_id,
+                        "driver_name": driver_name,                        # ← NEW
                         "trip_id": pkt.trip_id,
                         "vehicle_id": pkt.vehicle_id,
                         "event_time": str(pkt.event_time),
@@ -199,7 +205,7 @@ async def event_generator(request: Request):
                         "speed_kmh": pkt.speed_kmh,
                         "gps_lat": pkt.gps_lat,
                         "gps_lng": pkt.gps_lng,
-                        "message": f"Fuel Theft Detected! Driver {pkt.driver_id} lost {log.theft_amount_liters}L ({log.theft_type})"
+                        "message": f"Fuel Theft Detected! {driver_name} lost {log.theft_amount_liters}L ({log.theft_type})"
                     }
                     
                     # Print the warning to the backend CMD/console so you can check it manually
