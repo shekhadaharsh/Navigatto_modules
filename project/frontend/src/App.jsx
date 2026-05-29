@@ -1578,7 +1578,7 @@ export default function App() {
                                           <span className="font-bold text-slate-600 flex items-center gap-2 select-none shrink-0">
                                             <span className={`w-2 h-2 rounded-full shrink-0 ${journeyDetails.journey.acceleration_events === 0 ? 'bg-emerald-500 shadow-sm shadow-emerald-400' : (journeyDetails.journey.acceleration_events < 4 ? 'bg-amber-500' : 'bg-rose-500')
                                               }`} />
-                                            Accelerations
+                                            Harsh Accelerations
                                           </span>
                                           <span className="font-extrabold text-slate-700 shrink-0 bg-slate-100/80 px-2 py-0.5 rounded-lg text-[9.5px] font-outfit select-none">
                                             {journeyDetails.journey.acceleration_events} events
@@ -1608,7 +1608,7 @@ export default function App() {
                                           <span className="font-bold text-slate-600 flex items-center gap-2 select-none shrink-0">
                                             <span className={`w-2 h-2 rounded-full shrink-0 ${(journeyDetails.journey.idle_time_min || 0) < 10 ? 'bg-emerald-500 shadow-sm shadow-emerald-400' : ((journeyDetails.journey.idle_time_min || 0) < 25 ? 'bg-amber-500' : 'bg-rose-500')
                                               }`} />
-                                            Excessive Idling
+                                            Idling Time
                                           </span>
                                           <span className="font-extrabold text-slate-700 shrink-0 bg-slate-100/80 px-2 py-0.5 rounded-lg text-[9.5px] font-outfit select-none">
                                             {(journeyDetails.journey.idle_time_min || 0).toFixed(1)} mins
@@ -1846,11 +1846,11 @@ export default function App() {
                                 </div>
                                 <div className="flex items-center gap-2 py-1 border-b border-slate-200/30">
                                   <CheckCircle2 className="w-4.5 h-4.5 text-emerald-500 shrink-0" />
-                                  <span>Fuel consumption levels remain within expected variance thresholds</span>
+                                  <span>No refueling theft detected</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <CheckCircle2 className="w-4.5 h-4.5 text-emerald-500 shrink-0" />
-                                  <span>All fuel level variations trace perfectly to engine load speeds</span>
+                                  <span>No sudden fuel drop while the vehicle was running</span>
                                 </div>
                               </div>
                             )}
@@ -2558,8 +2558,8 @@ export default function App() {
                   {/* Detail Grid */}
                   <div className="grid grid-cols-2 gap-3">
                     <div className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl">
-                      <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide mb-0.5">Driver ID</p>
-                      <p className="text-sm font-extrabold text-slate-800 font-outfit">{activeFuelAlert.driver_id}</p>
+                      <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide mb-0.5">Driver Name</p>
+                      <p className="text-sm font-extrabold text-slate-800 font-outfit">{activeFuelAlert.driver_name}</p>
                     </div>
                     <div className="bg-slate-50 border border-slate-200/60 p-3 rounded-xl">
                       <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wide mb-0.5">Vehicle</p>
