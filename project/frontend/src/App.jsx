@@ -291,10 +291,10 @@ const getMockJourneyDetails = (journeyId, driverId) => {
           ? [{ issue: 'Brake Wear', severity: 'Warning', detail: 'Harsh braking frequency suggests high wear rates' }]
           : []),
       health_scores: isMaintCritical
-        ? { brake: 88.5, clutch: 6.0, tire: 92.4, battery: 9.3, engine: 75.6 }
+        ? { brake: 88.5, tire: 92.4, battery: 9.3, engine: 75.6 }
         : (brief.driver_score < 70
-          ? { brake: 25.4, clutch: 65.2, tire: 84.1, battery: 94.0, engine: 88.2 }
-          : { brake: 95.8, clutch: 78.8, tire: 98.1, battery: 100.0, engine: 92.5 })
+          ? { brake: 25.4, tire: 84.1, battery: 94.0, engine: 88.2 }
+          : { brake: 95.8, tire: 98.1, battery: 100.0, engine: 92.5 })
     },
     speed_profile: speedProfile
   };
@@ -528,17 +528,23 @@ export default function App() {
   const [activeFuelAlert, setActiveFuelAlert] = useState(null);
   const [showAlertToast, setShowAlertToast] = useState(false);
   const dismissedToastIdsRef = useRef(new Set());
-  const isAlertsMutedRef = useRef(false);
+  const isControllerRef = useRef(localStorage.getItem("is_replay_controller") === "true");
 
   useEffect(() => {
-    const handleStop = () => {
-      isAlertsMutedRef.current = true;
+    const handleStop = (e) => {
       setShowAlertToast(false);
       setActiveFuelAlert(null);
+      if (e.detail?.local) {
+        isControllerRef.current = false;
+      }
     };
-    const handleStart = () => {
-      isAlertsMutedRef.current = false;
+    const handleStart = (e) => {
       dismissedToastIdsRef.current.clear();
+      if (e.detail?.local !== undefined) {
+        isControllerRef.current = e.detail.local;
+      } else {
+        isControllerRef.current = localStorage.getItem("is_replay_controller") === "true";
+      }
     };
     window.addEventListener('replay-stopped', handleStop);
     window.addEventListener('replay-started', handleStart);
@@ -772,13 +778,13 @@ export default function App() {
             };
             
             updatedAlerts.splice(existingIdx, 1);
-            if (!dismissedToastIdsRef.current.has(`${mergedAlert.driver_id}-${mergedAlert.trip_id}`) && !isAlertsMutedRef.current) {
+            if (!dismissedToastIdsRef.current.has(`${mergedAlert.driver_id}-${mergedAlert.trip_id}`)) {
               setShowAlertToast(true);
             }
             return [mergedAlert, ...updatedAlerts].slice(0, 20);
           }
 
-          if (!dismissedToastIdsRef.current.has(`${payload.driver_id}-${payload.trip_id}`) && !isAlertsMutedRef.current) {
+          if (!dismissedToastIdsRef.current.has(`${payload.driver_id}-${payload.trip_id}`)) {
             setShowAlertToast(true);
           }
           return [payload, ...prev].slice(0, 20);
@@ -799,7 +805,7 @@ export default function App() {
     const fetchMaintHealth = async () => {
       if (isUsingMock) {
         const activeDriver = drivers.find(d => d.driver_id === activeDriverId);
-        const hs = journeyDetails.maintenance?.health_scores || { brake: 95.8, clutch: 78.8, tire: 98.1, battery: 100.0, engine: 92.5 };
+        const hs = journeyDetails.maintenance?.health_scores || { brake: 95.8, tire: 98.1, battery: 100.0, engine: 92.5 };
         setMaintHealthData({
           vehicle_id: vid,
           reg_no: activeDriver ? activeDriver.vehicle_id || "VH001" : "VH001",
@@ -807,7 +813,6 @@ export default function App() {
           model: activeDriver ? (activeDriver.vehicle_type === "Mini Truck" ? "Signa 4825.T" : "1914R") : "Signa 4825.T",
           components: [
             { component: "brake", accumulated_wear: parseFloat((20000.0 * (1 - hs.brake / 100)).toFixed(1)), base_life: 20000.0, rul: parseFloat((20000.0 * (hs.brake / 100)).toFixed(1)), health_score: hs.brake, status: hs.brake < 10 ? "critical" : (hs.brake < 30 ? "warning" : "ok"), last_updated: "2026-05-21 12:45" },
-            { component: "clutch", accumulated_wear: parseFloat((30000.0 * (1 - hs.clutch / 100)).toFixed(1)), base_life: 30000.0, rul: parseFloat((30000.0 * (hs.clutch / 100)).toFixed(1)), health_score: hs.clutch, status: hs.clutch < 10 ? "critical" : (hs.clutch < 30 ? "warning" : "ok"), last_updated: "2026-05-21 12:45" },
             { component: "tire", accumulated_wear: parseFloat((120000.0 * (1 - hs.tire / 100)).toFixed(1)), base_life: 120000.0, rul: parseFloat((120000.0 * (hs.tire / 100)).toFixed(1)), health_score: hs.tire, status: hs.tire < 10 ? "critical" : (hs.tire < 30 ? "warning" : "ok"), last_updated: "2026-05-21 12:45" },
             { component: "battery", accumulated_wear: parseFloat((5000.0 * (1 - hs.battery / 100)).toFixed(1)), base_life: 5000.0, rul: parseFloat((5000.0 * (hs.battery / 100)).toFixed(1)), health_score: hs.battery, status: hs.battery < 10 ? "critical" : (hs.battery < 30 ? "warning" : "ok"), last_updated: "2026-05-21 12:45" },
             { component: "engine", accumulated_wear: parseFloat((50000.0 * (1 - hs.engine / 100)).toFixed(1)), base_life: 50000.0, rul: parseFloat((50000.0 * (hs.engine / 100)).toFixed(1)), health_score: hs.engine, status: hs.engine < 10 ? "critical" : (hs.engine < 30 ? "warning" : "ok"), last_updated: "2026-05-21 12:45" }
@@ -890,7 +895,6 @@ export default function App() {
           model: activeDriver ? (activeDriver.vehicle_type === "Mini Truck" ? "Signa 4825.T" : "1914R") : "Signa 4825.T",
           components: [
             { component: "brake", accumulated_wear: 14500.2, base_life: 20000.0, rul: 5499.8, health_score: 27.5, status: "warning", last_updated: "2026-05-21 12:45" },
-            { component: "clutch", accumulated_wear: 28200.5, base_life: 30000.0, rul: 1799.5, health_score: 6.0, status: "critical", last_updated: "2026-05-21 12:45" },
             { component: "tire", accumulated_wear: 48900.0, base_life: 120000.0, rul: 71100.0, health_score: 59.3, status: "ok", last_updated: "2026-05-21 12:45" },
             { component: "battery", accumulated_wear: 350.0, base_life: 5000.0, rul: 4650.0, health_score: 93.0, status: "ok", last_updated: "2026-05-21 12:45" },
             { component: "engine", accumulated_wear: 12200.4, base_life: 50000.0, rul: 37799.6, health_score: 75.6, status: "ok", last_updated: "2026-05-21 12:45" }
@@ -899,7 +903,7 @@ export default function App() {
         setMaintFleetSummary({
           open_alerts: 2,
           fleet: [
-            { vehicle_id: "VH001", reg_no: "GJ-01-AA-1234", make: "Tata", model: "Signa", critical_count: 1, warning_count: 1, min_health: 6.0, overall_status: "critical" },
+            { vehicle_id: "VH001", reg_no: "GJ-01-AA-1234", make: "Tata", model: "Signa", critical_count: 0, warning_count: 1, min_health: 27.5, overall_status: "warning" },
             { vehicle_id: "VH002", reg_no: "MH-02-BB-5678", make: "Ashok Leyland", model: "Dost", critical_count: 0, warning_count: 0, min_health: 93.0, overall_status: "ok" },
             { vehicle_id: "VH003", reg_no: "KA-03-CC-9012", make: "BharatBenz", model: "1914R", critical_count: 0, warning_count: 1, min_health: 27.5, overall_status: "warning" }
           ]
@@ -940,20 +944,7 @@ export default function App() {
           }
         };
       });
-      if (maintHealthData) {
-        setMaintHealthData(prev => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            components: prev.components.map(c => {
-              if (c.component === "clutch") {
-                return { ...c, health_score: 95.0, rul: 28500.0, status: "ok" };
-              }
-              return c;
-            })
-          };
-        });
-      }
+      // Acknowledged mock alert state successfully updated
     } else {
       try {
         const res = await fetch(`/api/maintenance/alerts/${alertId}/ack`, { method: 'POST' });
@@ -1039,8 +1030,7 @@ export default function App() {
             onClick={(e) => {
               e.stopPropagation();
               setShowAlertToast(false);
-              isAlertsMutedRef.current = true;
-              if (fuelAlerts[0]) {
+              if (!isControllerRef.current && fuelAlerts[0]) {
                 dismissedToastIdsRef.current.add(`${fuelAlerts[0].driver_id}-${fuelAlerts[0].trip_id}`);
               }
             }}
@@ -1925,35 +1915,7 @@ export default function App() {
                             </div>
                           </div>
 
-                          {/* Model parameters explanation */}
-                          <div className="bg-slate-50 rounded-2xl border border-slate-200/50 p-4 mt-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-3 text-[11px] font-semibold text-slate-500">
-                            <div>
-                              <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Route & Idle Adjustments</p>
-                              <div className="space-y-1">
-                                <div className="flex justify-between">
-                                  <span>Route Multiplier:</span>
-                                  <span className="text-slate-800 font-extrabold">{journeyDetails.journey.route_type === 'Highway' ? '0.90x' : (journeyDetails.journey.route_type === 'City' ? '1.25x' : '1.05x')}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span>Idle Fuel Penalty:</span>
-                                  <span className="text-slate-800 font-extrabold">{(journeyDetails.journey.idle_time_min * 0.08).toFixed(2)} L</span>
-                                </div>
-                              </div>
-                            </div>
-                            <div>
-                              <p className="text-[9px] text-slate-400 font-bold uppercase mb-1">Load Factor Adjustments</p>
-                              <div className="space-y-1">
-                                <div className="flex justify-between">
-                                  <span>Cargo Load %:</span>
-                                  <span className="text-slate-800 font-extrabold">{(journeyDetails.journey.load_pct || 0).toFixed(1)}%</span>
-                                </div>
-                                <div className="flex justify-between">
-                                  <span>Consumption Factor:</span>
-                                  <span className="text-slate-800 font-extrabold">x{(1 + (journeyDetails.journey.load_pct / 100) * 0.15).toFixed(2)}</span>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
+                          {/* Adjustment parameters explanation removed per layout request */}
                         </div>
 
                         {/* -------------------- CARD 4: VEHICLE MAINTENANCE DIAGNOSTIC WITH 3D FLIP -------------------- */}
@@ -2030,9 +1992,11 @@ export default function App() {
                                   <div className="grid grid-cols-1 gap-2.5">
                                     {(() => {
                                       const scores = journeyDetails.maintenance?.health_scores || {
-                                        brake: 100, clutch: 100, tire: 100, battery: 100, engine: 100
+                                        brake: 100, tire: 100, battery: 100, engine: 100
                                       };
-                                      return Object.entries(scores).map(([comp, val]) => {
+                                      return Object.entries(scores)
+                                        .filter(([comp]) => comp !== 'clutch')
+                                        .map(([comp, val]) => {
                                         const scoreVal = val ?? 100;
                                         const isCrit = scoreVal < 10;
                                         const isWarn = scoreVal >= 10 && scoreVal < 30;
@@ -2132,21 +2096,22 @@ export default function App() {
                                 {/* Component items scrollable container */}
                                 <div className="flex-1 overflow-y-auto space-y-3 pr-1">
                                   {maintHealthData && maintHealthData.components ? (
-                                    maintHealthData.components.map((c, ci) => {
-                                      const isCrit = c.health_score < 10.0;
-                                      const isWarn = c.health_score >= 10.0 && c.health_score < 30.0;
-                                      const colorClass = isCrit ? 'text-rose-600 bg-rose-50 border-rose-100' : isWarn ? 'text-amber-600 bg-amber-50 border-amber-100' : 'text-emerald-600 bg-emerald-50 border-emerald-100';
-                                      const progressColor = isCrit ? 'from-rose-500 to-red-600' : isWarn ? 'from-amber-500 to-orange-500' : 'from-emerald-500 to-teal-500';
+                                    maintHealthData.components
+                                      .filter(c => c.component !== 'clutch')
+                                      .map((c, ci) => {
+                                        const isCrit = c.health_score < 10.0;
+                                        const isWarn = c.health_score >= 10.0 && c.health_score < 30.0;
+                                        const colorClass = isCrit ? 'text-rose-600 bg-rose-50 border-rose-100' : isWarn ? 'text-amber-600 bg-amber-50 border-amber-100' : 'text-emerald-600 bg-emerald-50 border-emerald-100';
+                                        const progressColor = isCrit ? 'from-rose-500 to-red-600' : isWarn ? 'from-amber-500 to-orange-500' : 'from-emerald-500 to-teal-500';
 
-                                      return (
-                                        <div key={ci} className="bg-slate-50/70 border border-slate-200/40 p-3 rounded-2xl flex items-center gap-3 hover:bg-slate-50 transition-all">
-                                          <div className="p-2 bg-white rounded-xl shadow-sm text-slate-500 shrink-0">
-                                            {c.component === "brake" ? <Wrench className="w-4 h-4 text-brand-500" /> :
-                                              c.component === "clutch" ? <Activity className="w-4 h-4 text-brand-500" /> :
+                                        return (
+                                          <div key={ci} className="bg-slate-50/70 border border-slate-200/40 p-3 rounded-2xl flex items-center gap-3 hover:bg-slate-50 transition-all">
+                                            <div className="p-2 bg-white rounded-xl shadow-sm text-slate-500 shrink-0">
+                                              {c.component === "brake" ? <Wrench className="w-4 h-4 text-brand-500" /> :
                                                 c.component === "tire" ? <Compass className="w-4 h-4 text-brand-500" /> :
                                                   c.component === "battery" ? <Battery className="w-4 h-4 text-brand-500" /> :
                                                     <Thermometer className="w-4 h-4 text-brand-500" />}
-                                          </div>
+                                            </div>
                                           <div className="flex-1 min-w-0">
                                             <div className="flex justify-between items-center mb-1">
                                               <span className="text-xs font-black text-slate-800 uppercase font-outfit">{c.component}</span>
@@ -2284,32 +2249,33 @@ export default function App() {
 
                           {/* Components Wear Grid */}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {maintHealthData && maintHealthData.components && maintHealthData.components.map((c, ci) => {
-                              const healthScoreVal = c && c.health_score !== undefined && c.health_score !== null ? parseFloat(c.health_score) : 100.0;
-                              const health = healthScoreVal.toFixed(1);
-                              const isCrit = healthScoreVal < 10.0;
-                              const isWarn = healthScoreVal >= 10.0 && healthScoreVal < 30.0;
-                              const colorClass = isCrit ? 'text-rose-500' : isWarn ? 'text-amber-500' : 'text-emerald-500';
-                              const strokeColor = isCrit ? '#ef4444' : isWarn ? '#f59e0b' : '#10b981';
+                            {maintHealthData && maintHealthData.components && maintHealthData.components
+                              .filter(c => c.component !== 'clutch')
+                              .map((c, ci) => {
+                                const healthScoreVal = c && c.health_score !== undefined && c.health_score !== null ? parseFloat(c.health_score) : 100.0;
+                                const health = healthScoreVal.toFixed(1);
+                                const isCrit = healthScoreVal < 10.0;
+                                const isWarn = healthScoreVal >= 10.0 && healthScoreVal < 30.0;
+                                const colorClass = isCrit ? 'text-rose-500' : isWarn ? 'text-amber-500' : 'text-emerald-500';
+                                const strokeColor = isCrit ? '#ef4444' : isWarn ? '#f59e0b' : '#10b981';
 
-                              // Calculate circumference for progress ring
-                              const radius = 35;
-                              const circumference = 2 * Math.PI * radius;
-                              const offset = circumference - (c.health_score / 100) * circumference;
+                                // Calculate circumference for progress ring
+                                const radius = 35;
+                                const circumference = 2 * Math.PI * radius;
+                                const offset = circumference - (c.health_score / 100) * circumference;
 
-                              return (
-                                <div key={ci} className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
-                                  <div>
-                                    {/* Component Title & Status */}
-                                    <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-                                      <div className="flex items-center gap-2">
-                                        <span className="p-2 bg-slate-50 text-slate-500 rounded-xl">
-                                          {c.component === "brake" ? <Wrench className="w-4 h-4" /> :
-                                            c.component === "clutch" ? <Activity className="w-4 h-4" /> :
+                                return (
+                                  <div key={ci} className="bg-white rounded-3xl border border-slate-200/80 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
+                                    <div>
+                                      {/* Component Title & Status */}
+                                      <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                                        <div className="flex items-center gap-2">
+                                          <span className="p-2 bg-slate-50 text-slate-500 rounded-xl">
+                                            {c.component === "brake" ? <Wrench className="w-4 h-4" /> :
                                               c.component === "tire" ? <Compass className="w-4 h-4" /> :
                                                 c.component === "battery" ? <Battery className="w-4 h-4" /> :
                                                   <Thermometer className="w-4 h-4" />}
-                                        </span>
+                                          </span>
                                         <div>
                                           <h4 className="text-sm font-black font-outfit text-slate-800 uppercase tracking-wide leading-none">{c.component} Systems</h4>
                                           <span className="text-[10px] text-slate-400 font-bold uppercase">Physics wear engine</span>
@@ -2553,8 +2519,7 @@ export default function App() {
                   <button
                     onClick={() => {
                       setActiveFuelAlert(null);
-                      isAlertsMutedRef.current = true;
-                      if (activeFuelAlert) {
+                      if (!isControllerRef.current && activeFuelAlert) {
                         dismissedToastIdsRef.current.add(`${activeFuelAlert.driver_id}-${activeFuelAlert.trip_id}`);
                       }
                     }}
