@@ -501,6 +501,7 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
             avg_speed_kmh       = trip.avg_speed_kmh,
             idle_time_min       = trip.idle_time_min,
         )
+        print(f"[DEBUG] USE_ML_FUEL_PREDICTION={USE_ML_FUEL_PREDICTION}, predicted_fuel={predicted_fuel}")  # ← ADD THIS
         expected_fuel = predicted_fuel if predicted_fuel is not None else (trip.expected_fuel_L or 0.0)
         fuel_source   = "ml_model" if predicted_fuel is not None else "db_fallback"
     else:
