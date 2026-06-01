@@ -482,8 +482,26 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
     fuel_theft_data = get_fuel_theft_for_trip(db, driver_id, trip_id)
 
     # ── Fuel Consumption (from journey_scores — Person 2 will upgrade) ──
+    # ── Fuel Consumption (ML model prediction — fuel_module/predictor.py) ──
+    from fuel_module.predictor import predict_expected_fuel
     actual_fuel   = trip.actual_fuel_used_L or 0.0
-    expected_fuel = trip.expected_fuel_L or 0.0
+
+    predicted_fuel = predict_expected_fuel(
+        distance_km         = trip.distance_km,
+        route_type          = trip.route_type,
+        load_pct            = trip.load_pct,
+        vehicle_type        = trip.vehicle_type,
+        engine_total_hour   = trip.engine_total_hour,
+        total_odometer      = trip.Total_Odometer,
+        temp_celsius        = trip.temp_celsius,
+        avg_engine_rpm      = trip.avg_engine_rpm,
+        avg_engine_load_pct = trip.avg_engine_load_pct,
+        avg_fuel_rate_lhr   = trip.avg_fuel_rate_Lhr,
+        avg_speed_kmh       = trip.avg_speed_kmh,
+        idle_time_min       = trip.idle_time_min,
+    )
+    # Fallback to DB value if model fails
+    expected_fuel = predicted_fuel if predicted_fuel is not None else (trip.expected_fuel_L or 0.0)
 
     variance_pct = 0.0
     if expected_fuel > 0:
@@ -642,10 +660,12 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
         "fuel_theft": fuel_theft_data,
 
         # ── Fuel Consumption Module (Person 2) ───────────
+        # ── Fuel Consumption Module (ML Predicted) ───────────
         "expected_fuel": {
-            "expected_liters": round(expected_fuel, 2),
-            "actual_liters":   round(actual_fuel, 2),
-            "variance_pct":    variance_pct,
+            "expected_liters":  round(expected_fuel, 2),
+            "actual_liters":    round(actual_fuel, 2),
+            "variance_pct":     variance_pct,
+            "source":           "ml_model" if predicted_fuel is not None else "db_fallback",
         },
 
         # ── Maintenance Module (Person 3) ─────────────────
