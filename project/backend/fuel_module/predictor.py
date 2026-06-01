@@ -11,9 +11,13 @@ Feature order the model was trained on (12 features):
   avg_speed_kmh, idle_time_min
 """
 
+
 import os
 import joblib
 import pandas as pd
+
+# ── NEW: Env flag to toggle ML vs DB fuel source ──
+USE_ML_FUEL_PREDICTION = os.getenv("USE_ML_FUEL_PREDICTION", "true").lower() == "true"
 
 # ── Label encoding maps (must match what the notebook used) ──
 ROUTE_TYPE_MAP = {
@@ -25,10 +29,10 @@ ROUTE_TYPE_MAP = {
 }
 
 VEHICLE_TYPE_MAP = {
-    "Heavy Cargo Truck": 0,
-    "Medium Cargo":      1,
-    "Mini Truck":        2,
-    "Pickup Truck":      3,
+    "Heavy Cargo Truck":   0,
+    "Medium Cargo Truck":  1,   
+    "Mini Truck":          2,
+    "Pickup Truck":        3,
 }
 
 # ── Load model once at import time ──

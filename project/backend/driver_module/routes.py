@@ -11,6 +11,7 @@ Endpoints:
     GET /drivers/{driver_id}/trips/{trip_id}/score → Single trip score breakdown
 """
 
+from IPython.utils import strdispatch
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, text
@@ -481,36 +482,37 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
     from fuel_module.routes import get_fuel_theft_for_trip
     fuel_theft_data = get_fuel_theft_for_trip(db, driver_id, trip_id)
 
-    # ── Fuel Consumption (from journey_scores — Person 2 will upgrade) ──
-    # ── Fuel Consumption (ML model prediction — fuel_module/predictor.py) ──
-    from fuel_module.predictor import predict_expected_fuel
-    actual_fuel   = trip.actual_fuel_used_L or 0.0
+    # ── Fuel Consumption (ML model OR direct DB — toggled via USE_ML_FUEL_PREDICTION) ──
+    from fuel_module.predictor import predict_expected_fuel, USE_ML_FUEL_PREDICTION
+    actual_fuel = trip.actual_fuel_used_L or 0.0
 
-    predicted_fuel = predict_expected_fuel(
-        distance_km         = trip.distance_km,
-        route_type          = trip.route_type,
-        load_pct            = trip.load_pct,
-        vehicle_type        = trip.vehicle_type,
-        engine_total_hour   = trip.engine_total_hour,
-        total_odometer      = trip.Total_Odometer,
-        temp_celsius        = trip.temp_celsius,
-        avg_engine_rpm      = trip.avg_engine_rpm,
-        avg_engine_load_pct = trip.avg_engine_load_pct,
-        avg_fuel_rate_lhr   = trip.avg_fuel_rate_Lhr,
-        avg_speed_kmh       = trip.avg_speed_kmh,
-        idle_time_min       = trip.idle_time_min,
-    )
-    # Fallback to DB value if model fails
-    expected_fuel = predicted_fuel if predicted_fuel is not None else (trip.expected_fuel_L or 0.0)
+    if USE_ML_FUEL_PREDICTION:
+        predicted_fuel = predict_expected_fuel(
+            distance_km         = trip.distance_km,
+            route_type          = trip.route_type,
+            load_pct            = trip.load_pct,
+            vehicle_type        = trip.vehicle_type,
+            engine_total_hour   = trip.engine_total_hour,
+            total_odometer      = trip.Total_Odometer,
+            temp_celsius        = trip.temp_celsius,
+            avg_engine_rpm      = trip.avg_engine_rpm,
+            avg_engine_load_pct = trip.avg_engine_load_pct,
+            avg_fuel_rate_lhr   = trip.avg_fuel_rate_Lhr,
+            avg_speed_kmh       = trip.avg_speed_kmh,
+            idle_time_min       = trip.idle_time_min,
+        )
+        expected_fuel = predicted_fuel if predicted_fuel is not None else (trip.expected_fuel_L or 0.0)
+        fuel_source   = "ml_model" if predicted_fuel is not None else "db_fallback"
+    else:
+        predicted_fuel = None
+        expected_fuel  = trip.expected_fuel_L or 0.0
+        fuel_source    = "db"
 
     variance_pct = 0.0
     if expected_fuel > 0:
         variance_pct = round(((actual_fuel - expected_fuel) / expected_fuel) * 100, 2)
 
     # ── Maintenance signals (Person 3 - Integrated Real DB Calculations) ──
-    # Note: Wear engine simulations should run in a background task, not synchronously!
-    # They have been disabled here to prevent excessive API load times.
-
     # Fetch real sensor telemetry for this trip
     telemetry_row = db.execute(
         text("""
@@ -522,7 +524,7 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
         {"trip_id": trip_id}
     ).fetchone()
 
-    ext_voltage = float(telemetry_row[0]) if telemetry_row and telemetry_row[0] is not None else 12.6
+    ext_voltage  = float(telemetry_row[0]) if telemetry_row and telemetry_row[0] is not None else 12.6
     coolant_temp = float(telemetry_row[1]) if telemetry_row and telemetry_row[1] is not None else (trip.temp_celsius or 85.0)
 
     # Fetch active (unacknowledged) database alerts for this vehicle
@@ -537,7 +539,7 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
 
     maint_alerts = []
     has_critical = False
-    has_warning = False
+    has_warning  = False
 
     for r in alerts_rows:
         alert_id, comp, lvl, msg = r
@@ -548,33 +550,32 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
             has_warning = True
 
         maint_alerts.append({
-            "id": str(alert_id),
-            "issue": f"{comp.upper()} Issue" if "worn out" not in msg else f"{comp.upper()} Replacement Required",
+            "id":       str(alert_id),
+            "issue":    f"{comp.upper()} Issue" if "worn out" not in msg else f"{comp.upper()} Replacement Required",
             "severity": sev,
-            "detail": msg
+            "detail":   msg
         })
 
-    # Add real-time battery voltage alert check
+    # Real-time battery voltage alert
     if ext_voltage < 11.5:
         if not any(a["issue"] == "Battery Issue" for a in maint_alerts):
             maint_alerts.append({
-                "issue": "Battery Issue",
+                "issue":    "Battery Issue",
                 "severity": "Critical",
-                "detail": f"External voltage drop: {ext_voltage:.1f} V (threshold < 11.5 V)"
+                "detail":   f"External voltage drop: {ext_voltage:.1f} V (threshold < 11.5 V)"
             })
             has_critical = True
 
-    # Add real-time coolant temp alert check
+    # Real-time coolant temp alert
     if coolant_temp > 100.0:
         if not any(a["issue"] == "Engine Overheating" for a in maint_alerts):
             maint_alerts.append({
-                "issue": "Engine Overheating",
+                "issue":    "Engine Overheating",
                 "severity": "Critical",
-                "detail": f"Temperature: {coolant_temp:.1f}°C exceeds max threshold of 100°C"
+                "detail":   f"Temperature: {coolant_temp:.1f}°C exceeds max threshold of 100°C"
             })
             has_critical = True
 
-    # Set priority based on open alerts
     if has_critical:
         maint_priority = "Critical"
     elif has_warning:
@@ -614,31 +615,27 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
             "load_pct":             trip.load_pct or 0.0,
             "idle_time_min":        trip.idle_time_min or 0.0,
             "stops":                trip.num_stops or 0,
-            # Behaviour events
             "acceleration_events":  trip.accel_events or 0,
             "brake_events":         trip.brake_events or 0,
             "overspeed_count":      trip.over_speed_count or 0,
             "cornering_events":     trip.cornering_events or 0,
-            # Engine
             "avg_engine_rpm":       trip.avg_engine_rpm or 0.0,
             "avg_engine_load_pct":  trip.avg_engine_load_pct or 0.0,
             "avg_fuel_rate_lhr":    trip.avg_fuel_rate_Lhr or 0.0,
-            # Fuel
             "fuel_consumed_liters": actual_fuel,
             "fuel_level_start":     trip.P87_fuel_start_pct or 0.0,
             "fuel_level_end":       trip.P87_fuel_end_pct or 0.0,
-            # Sensors
             "external_voltage":     ext_voltage,
             "dallas_temp_celsius":  coolant_temp,
         },
 
         # ── Driver Score Module ───────────────────────────
         "driver_score": {
-            "score": final_score,
-            "label": label,
-            "risk_level": scored["risk_level"],
+            "score":          final_score,
+            "label":          label,
+            "risk_level":     scored["risk_level"],
             "scoring_method": scored.get("scoring_method", "Rule-Based"),
-            "ml_confidence": scored.get("ml_confidence"),
+            "ml_confidence":  scored.get("ml_confidence"),
             "score_comparison": score_comp,
             "breakdown": {
                 "acceleration": -scored["penalties"]["accel_penalty"],
@@ -656,27 +653,25 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
             }
         },
 
-        # ── Fuel Theft Module (live from journey_fuel_logs) ─
+        # ── Fuel Theft Module ─────────────────────────────
         "fuel_theft": fuel_theft_data,
 
-        # ── Fuel Consumption Module (Person 2) ───────────
-        # ── Fuel Consumption Module (ML Predicted) ───────────
+        # ── Fuel Consumption Module ───────────────────────
         "expected_fuel": {
-            "expected_liters":  round(expected_fuel, 2),
-            "actual_liters":    round(actual_fuel, 2),
-            "variance_pct":     variance_pct,
-            "source":           "ml_model" if predicted_fuel is not None else "db_fallback",
+            "expected_liters": round(expected_fuel, 2),
+            "actual_liters":   round(actual_fuel, 2),
+            "variance_pct":    variance_pct,
+            "source":          fuel_source,
         },
 
-        # ── Maintenance Module (Person 3) ─────────────────
+        # ── Maintenance Module ────────────────────────────
         "maintenance": {
-            "priority":    maint_priority,
-            "alert_count": len(maint_alerts),
-            "alerts":      maint_alerts,
+            "priority":      maint_priority,
+            "alert_count":   len(maint_alerts),
+            "alerts":        maint_alerts,
             "health_scores": health_scores,
         },
 
-        # ── Speed Profile (placeholder — upgrade with real telemetry) ──
-        # Person 3 / telemetry stream can replace this with real data
+        # ── Speed Profile ─────────────────────────────────
         "speed_profile": None,
     }
