@@ -1864,12 +1864,19 @@ export default function App() {
                               <h3 className="text-sm font-extrabold text-slate-800 font-outfit tracking-wide flex items-center gap-2 uppercase">
                                 <Activity className="w-4.5 h-4.5 text-brand-500" /> Predictive Expected Fuel
                               </h3>
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${Math.abs(journeyDetails.expected_fuel.variance_pct) > 20
-                                  ? 'bg-rose-50 text-rose-700 border-rose-200'
-                                  : 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                }`}>
-                                Variance: {journeyDetails.expected_fuel.variance_pct > 0 ? '+' : ''}{(journeyDetails.expected_fuel.variance_pct || 0).toFixed(1)}%
-                              </span>
+                              <div className="flex items-center gap-2">
+                {journeyDetails.expected_fuel.source === "ml_model" && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold border bg-violet-50 text-violet-700 border-violet-200 flex items-center gap-1">
+                    🤖 AI Predicted
+                  </span>
+                )}
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${Math.abs(journeyDetails.expected_fuel.variance_pct) > 20
+                    ? 'bg-rose-50 text-rose-700 border-rose-200'
+                    : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  }`}>
+                  Variance: {journeyDetails.expected_fuel.variance_pct > 0 ? '+' : ''}{(journeyDetails.expected_fuel.variance_pct || 0).toFixed(1)}%
+                </span>
+              </div>
                             </div>
                             {/* Side-by-side Recharts bar chart */}
                             <div className="flex-1 min-h-[150px] w-full mt-3">
