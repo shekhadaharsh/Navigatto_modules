@@ -15,7 +15,12 @@ from sqlalchemy import func
 
 from database.db import get_db, SessionLocal
 from fuel_module.models import JourneyFuelLog1, FmcRawPacket
+from driver_module.model import Driver
 from fuel_module.schema import FuelTheftResponse, FuelTheftEvent
+from fuel_module.predictor import predict_expected_fuel
+from driver_module.model import Trip
+
+
 
 router = APIRouter(prefix="/fuel", tags=["Fuel Theft Detection"])
 
@@ -186,10 +191,15 @@ async def event_generator(request: Request):
 
             if new_thefts:
                 for log, pkt in new_thefts:
+                    # Look up driver name from drivers table
+                    driver_obj = db.query(Driver).filter(Driver.driver_id == pkt.driver_id).first()
+                    driver_name = driver_obj.driver_name if (driver_obj and driver_obj.driver_name) else pkt.driver_id
+
                     # Construct the event payload
                     payload = {
                         "alert_id": log.id,
                         "driver_id": pkt.driver_id,
+                        "driver_name": driver_name,                        # ← NEW
                         "trip_id": pkt.trip_id,
                         "vehicle_id": pkt.vehicle_id,
                         "event_time": str(pkt.event_time),
@@ -199,7 +209,7 @@ async def event_generator(request: Request):
                         "speed_kmh": pkt.speed_kmh,
                         "gps_lat": pkt.gps_lat,
                         "gps_lng": pkt.gps_lng,
-                        "message": f"Fuel Theft Detected! Driver {pkt.driver_id} lost {log.theft_amount_liters}L ({log.theft_type})"
+                        "message": f"Fuel Theft Detected! {driver_name} lost {log.theft_amount_liters}L ({log.theft_type})"
                     }
                     
                     # Print the warning to the backend CMD/console so you can check it manually
@@ -226,3 +236,60 @@ async def sse_fuel_alerts(request: Request):
     The client will receive an event whenever a new theft is detected.
     """
     return StreamingResponse(event_generator(request), media_type="text/event-stream")
+
+
+# ─────────────────────────────────────────
+# ML PREDICTION ENDPOINT
+# GET /fuel/predict/{driver_id}/{trip_id}
+# Returns ML-predicted expected fuel for a trip
+# ─────────────────────────────────────────
+@router.get(
+    "/predict/{driver_id}/{trip_id}",
+    summary="ML-predicted expected fuel consumption for a trip",
+)
+def predict_fuel_endpoint(
+    driver_id: str,
+    trip_id: str,
+    db: Session = Depends(get_db),
+):
+    from fastapi import HTTPException
+
+    trip = (
+        db.query(Trip)
+        .filter(Trip.driver_id == driver_id, Trip.trip_id == trip_id)
+        .first()
+    )
+    if not trip:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Trip '{trip_id}' not found for driver '{driver_id}'"
+        )
+
+    predicted = predict_expected_fuel(
+        distance_km       = trip.distance_km,
+        route_type        = trip.route_type,
+        load_pct          = trip.load_pct,
+        vehicle_type      = trip.vehicle_type,
+        engine_total_hour = trip.engine_total_hour,
+        total_odometer    = trip.Total_Odometer,
+        temp_celsius      = trip.temp_celsius,
+        avg_engine_rpm    = trip.avg_engine_rpm,
+        avg_engine_load_pct = trip.avg_engine_load_pct,
+        avg_fuel_rate_lhr = trip.avg_fuel_rate_Lhr,
+        avg_speed_kmh     = trip.avg_speed_kmh,
+        idle_time_min     = trip.idle_time_min,
+    )
+
+    actual_fuel = trip.actual_fuel_used_L or 0.0
+    variance_pct = 0.0
+    if predicted and predicted > 0:
+        variance_pct = round(((actual_fuel - predicted) / predicted) * 100, 2)
+
+    return {
+        "trip_id":           trip_id,
+        "driver_id":         driver_id,
+        "predicted_fuel_L":  predicted,
+        "actual_fuel_L":     round(actual_fuel, 2),
+        "variance_pct":      variance_pct,
+        "model":             "xgboost_fuel_prediction_model",
+    }
