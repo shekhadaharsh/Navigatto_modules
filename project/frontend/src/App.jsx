@@ -932,18 +932,50 @@ export default function App() {
 
   const handleAckAlert = async (alertId) => {
     if (isUsingMock) {
+      // Find the component being resolved from the current mock state
+      const resolvedAlert = journeyDetails?.maintenance?.alerts?.find(a => a.id === alertId);
+      let targetComponent = "";
+      if (resolvedAlert) {
+        const issueLower = (resolvedAlert.issue || "").toLowerCase();
+        const detailLower = (resolvedAlert.detail || "").toLowerCase();
+        if (issueLower.includes("engine") || detailLower.includes("engine")) targetComponent = "engine";
+        else if (issueLower.includes("brake") || detailLower.includes("brake")) targetComponent = "brake";
+        else if (issueLower.includes("tire") || detailLower.includes("tire")) targetComponent = "tire";
+        else if (issueLower.includes("battery") || detailLower.includes("battery")) targetComponent = "battery";
+      }
+
       setJourneyDetails(prev => {
         if (!prev) return prev;
+        let updatedHealthScores = { ...(prev.maintenance.health_scores || { brake: 100, tire: 100, battery: 100, engine: 100 }) };
+        if (targetComponent) {
+          updatedHealthScores[targetComponent] = 100;
+        }
         return {
           ...prev,
           maintenance: {
             ...prev.maintenance,
             alerts: prev.maintenance.alerts.filter(a => a.id !== alertId),
             alert_count: Math.max(0, prev.maintenance.alert_count - 1),
-            priority: prev.maintenance.alerts.filter(a => a.id !== alertId).length > 0 ? "Warning" : "OK"
+            priority: prev.maintenance.alerts.filter(a => a.id !== alertId).length > 0 ? "Warning" : "OK",
+            health_scores: updatedHealthScores
           }
         };
       });
+
+      if (targetComponent) {
+        setMaintHealthData(prev => {
+          if (!prev || !prev.components) return prev;
+          return {
+            ...prev,
+            components: prev.components.map(c => {
+              if (c.component === targetComponent) {
+                return { ...c, health_score: 100.0, rul: c.base_life || 50000.0, accumulated_wear: 0.0 };
+              }
+              return c;
+            })
+          };
+        });
+      }
       // Acknowledged mock alert state successfully updated
     } else {
       try {
