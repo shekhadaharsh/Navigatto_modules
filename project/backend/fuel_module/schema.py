@@ -7,7 +7,6 @@ Response models used by the fuel-theft API endpoints.
 from typing import List, Optional
 from pydantic import BaseModel
 
-
 class FuelTheftEvent(BaseModel):
     """One individual theft record from journey_fuel_logs."""
     id: int

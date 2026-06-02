@@ -24,7 +24,6 @@ from driver_module.model import Trip
 
 router = APIRouter(prefix="/fuel", tags=["Fuel Theft Detection"])
 
-
 # ─────────────────────────────────────────
 # REUSABLE HELPER — called from here AND
 # from driver_module's /details endpoint
