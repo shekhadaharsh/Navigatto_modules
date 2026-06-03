@@ -257,8 +257,21 @@ def get_maintenance_alerts(vehicle_id: Optional[str] = None, level: Optional[str
 @router.post("/alerts/{alert_id}/ack")
 def acknowledge_alert(alert_id: str, db: Session = Depends(get_db)):
     """
-    Acknowledge a predictive warning, marking it as resolved in the dashboard.
+    Acknowledge a predictive warning, marking it as resolved in the dashboard
+    and resetting the corresponding component's wear to 0.0 (restoring health to 100%).
     """
+    # Fetch alert details to know which vehicle and component it belongs to
+    alert_info = db.execute(
+        text("SELECT vehicle_id, component FROM maintenance_alerts WHERE id = :alert_id"),
+        {"alert_id": alert_id}
+    ).fetchone()
+
+    if not alert_info:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    vehicle_id, component = alert_info[0], alert_info[1]
+
+    # Update alert as acknowledged
     res = db.execute(
         text("""
             UPDATE maintenance_alerts
@@ -269,10 +282,21 @@ def acknowledge_alert(alert_id: str, db: Session = Depends(get_db)):
     )
     
     if res.rowcount == 0:
-        raise HTTPException(status_code=404, detail="Alert not found or already acknowledged")
+        raise HTTPException(status_code=404, detail="Alert already acknowledged")
+
+    # Reset accumulated wear to 0.0 for that specific component & vehicle to restore health score to 100%
+    db.execute(
+        text("""
+            UPDATE component_wear_state
+            SET accumulated_wear = 0.0,
+                last_updated = SYSUTCDATETIME()
+            WHERE vehicle_id = :vid AND component = :comp
+        """),
+        {"vid": vehicle_id, "comp": component}
+    )
 
     db.commit()
-    return {"status": "acknowledged", "alert_id": alert_id}
+    return {"status": "acknowledged", "alert_id": alert_id, "component": component}
 
 
 # ── 6. Fleet Maintenance Health Summary ───────────────────────
