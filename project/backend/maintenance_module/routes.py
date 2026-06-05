@@ -299,7 +299,41 @@ def acknowledge_alert(alert_id: str, db: Session = Depends(get_db)):
     return {"status": "acknowledged", "alert_id": alert_id, "component": component}
 
 
-# ── 6. Fleet Maintenance Health Summary ───────────────────────
+# ── 6. Resolve Component Wear ─────────────────────────────────
+@router.post("/components/{vehicle_id}/{component}/resolve")
+def resolve_component_wear(vehicle_id: str, component: str, db: Session = Depends(get_db)):
+    """
+    Manually resolve all issues for a specific component, resetting its wear to 0.
+    """
+    # Reset accumulated wear to 0.0 for that specific component & vehicle to restore health score to 100%
+    res = db.execute(
+        text("""
+            UPDATE component_wear_state
+            SET accumulated_wear = 0.0,
+                last_updated = SYSUTCDATETIME()
+            WHERE vehicle_id = :vid AND component = :comp
+        """),
+        {"vid": vehicle_id, "comp": component}
+    )
+    
+    if res.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Component wear state not found")
+
+    # Acknowledge any open alerts for this component
+    db.execute(
+        text("""
+            UPDATE maintenance_alerts
+            SET acknowledged = 1, ack_at = SYSUTCDATETIME()
+            WHERE vehicle_id = :vid AND component = :comp AND acknowledged = 0
+        """),
+        {"vid": vehicle_id, "comp": component}
+    )
+
+    db.commit()
+    return {"status": "resolved", "vehicle_id": vehicle_id, "component": component}
+
+
+# ── 7. Fleet Maintenance Health Summary ───────────────────────
 @router.get("/fleet", response_model=FleetSummaryResponse)
 def get_fleet_summary(db: Session = Depends(get_db)):
     """
