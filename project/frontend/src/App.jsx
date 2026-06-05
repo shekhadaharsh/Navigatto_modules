@@ -897,15 +897,16 @@ export default function App() {
             { component: "brake", accumulated_wear: 14500.2, base_life: 20000.0, rul: 5499.8, health_score: 27.5, status: "warning", last_updated: "2026-05-21 12:45" },
             { component: "tire", accumulated_wear: 48900.0, base_life: 120000.0, rul: 71100.0, health_score: 59.3, status: "ok", last_updated: "2026-05-21 12:45" },
             { component: "battery", accumulated_wear: 350.0, base_life: 5000.0, rul: 4650.0, health_score: 93.0, status: "ok", last_updated: "2026-05-21 12:45" },
-            { component: "engine", accumulated_wear: 12200.4, base_life: 50000.0, rul: 37799.6, health_score: 75.6, status: "ok", last_updated: "2026-05-21 12:45" }
+            { component: "engine", accumulated_wear: 45750.0, base_life: 50000.0, rul: 4250.0, health_score: 8.5, status: "critical", last_updated: "2026-05-21 12:45" }
           ]
         });
         setMaintFleetSummary({
-          open_alerts: 2,
+          open_alerts: 5,
           fleet: [
-            { vehicle_id: "VH001", reg_no: "GJ-01-AA-1234", make: "Tata", model: "Signa", critical_count: 0, warning_count: 1, min_health: 27.5, overall_status: "warning" },
-            { vehicle_id: "VH002", reg_no: "MH-02-BB-5678", make: "Ashok Leyland", model: "Dost", critical_count: 0, warning_count: 0, min_health: 93.0, overall_status: "ok" },
-            { vehicle_id: "VH003", reg_no: "KA-03-CC-9012", make: "BharatBenz", model: "1914R", critical_count: 0, warning_count: 1, min_health: 27.5, overall_status: "warning" }
+            { vehicle_id: "VH001", reg_no: "GJ-01-AA-1234", make: "Tata", model: "Signa", critical_count: 1, warning_count: 1, min_health: 8.5, overall_status: "critical" },
+            { vehicle_id: "VH002", reg_no: "MH-02-BB-5678", make: "Ashok Leyland", model: "Dost", critical_count: 1, warning_count: 1, min_health: 8.0, overall_status: "critical" },
+            { vehicle_id: "VH003", reg_no: "KA-03-CC-9012", make: "BharatBenz", model: "1914R", critical_count: 0, warning_count: 1, min_health: 25.0, overall_status: "warning" },
+            { vehicle_id: "VH004", reg_no: "DL-04-DD-3456", make: "Tata", model: "LPT", critical_count: 0, warning_count: 0, min_health: 85.0, overall_status: "ok" }
           ]
         });
         setIsLoadingMaintHealth(false);
@@ -992,6 +993,46 @@ export default function App() {
         }
       } catch (err) {
         console.error("Failed to acknowledge alert", err);
+      }
+    }
+  };
+
+  const handleResolveComponent = async (componentName, vehicleId) => {
+    if (isUsingMock) {
+      setMaintHealthData(prev => {
+        if (!prev || !prev.components) return prev;
+        return {
+          ...prev,
+          components: prev.components.map(c => {
+            if (c.component === componentName) {
+              return { ...c, health_score: 100.0, rul: c.base_life || 50000.0, accumulated_wear: 0.0, status: "ok" };
+            }
+            return c;
+          })
+        };
+      });
+      setJourneyDetails(prev => {
+        if (!prev) return prev;
+        let updatedHealthScores = { ...(prev.maintenance.health_scores || { brake: 100, tire: 100, battery: 100, engine: 100 }) };
+        updatedHealthScores[componentName] = 100;
+        return {
+          ...prev,
+          maintenance: {
+            ...prev.maintenance,
+            health_scores: updatedHealthScores
+          }
+        };
+      });
+    } else {
+      try {
+        const res = await fetch(`/api/maintenance/components/${vehicleId}/${componentName}/resolve`, { method: 'POST' });
+        if (res.ok) {
+          if (maintVehicleId) {
+            openMaintenanceDashboard(maintVehicleId);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to resolve component", err);
       }
     }
   };
@@ -2320,12 +2361,25 @@ export default function App() {
                                           <span className="text-[10px] text-slate-400 font-bold uppercase">Physics wear engine</span>
                                         </div>
                                       </div>
-                                      <span className={`text-[9px] px-2 py-0.5 rounded-full font-black border uppercase tracking-wider ${isCrit ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                          isWarn ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                            'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                        }`}>
-                                        {c.status}
-                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        {healthScoreVal < 100.0 && (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleResolveComponent(c.component, maintHealthData.vehicle_id);
+                                            }}
+                                            className="text-[9px] font-bold bg-white/80 hover:bg-white text-slate-700 px-2 py-0.5 rounded border border-slate-200 shadow-sm transition-all cursor-pointer select-none active:scale-95"
+                                          >
+                                            Resolve
+                                          </button>
+                                        )}
+                                        <span className={`text-[9px] px-2 py-0.5 rounded-full font-black border uppercase tracking-wider ${isCrit ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                            isWarn ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                              'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                          }`}>
+                                          {c.status}
+                                        </span>
+                                      </div>
                                     </div>
 
                                     {/* Circular radial indicator and details */}
