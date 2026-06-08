@@ -384,3 +384,5 @@ def get_fleet_summary(db: Session = Depends(get_db)):
         open_alerts=open_alerts,
         fleet=fleet
     )
+
+
