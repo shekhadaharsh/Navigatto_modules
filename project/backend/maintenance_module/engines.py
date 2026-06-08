@@ -9,6 +9,17 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from datetime import datetime
 import math
+import joblib
+import os
+import pandas as pd
+import logging
+
+try:
+    AI_MODEL_PATH = os.path.join(os.path.dirname(__file__), 'engine_wear_model.pkl')
+    ENGINE_AI_MODELS = joblib.load(AI_MODEL_PATH)
+except Exception as e:
+    ENGINE_AI_MODELS = None
+    logging.warning(f"Could not load AI model for engine wear: {e}")
 
 # ── Wear Thresholds & Constants ──────────────────────────────
 HARSH_BRAKE_G     = -0.35
@@ -600,22 +611,41 @@ def process_vehicle_engine(db: Session, vehicle_id: str, reg_no: str):
             continue
 
         is_overheat = temp > 105.0
-        is_high_rpm = rpm > 3200
-        is_high_trq = torque > 450.0
-        is_long_idl = idle_min > 20.0
-
-        if is_overheat:
-            event_type, base_wear, multi = "overheat", 20.0, 10.0
-        elif is_high_rpm:
-            event_type, base_wear, multi = "high_rpm", 5.0, 4.0
-        elif is_high_trq:
-            event_type, base_wear, multi = "high_torque", 3.0, 3.0
-        elif is_long_idl:
-            event_type, base_wear, multi = "long_idle", 2.0, 2.0
+        
+        if ENGINE_AI_MODELS:
+            # Use AI Model for inference
+            # features: 'rpm', 'coolant_temp', 'engine_load', 'fuel_rate', 'idle_time'
+            input_df = pd.DataFrame([{
+                'rpm': rpm, 
+                'coolant_temp': temp, 
+                'engine_load': load, 
+                'fuel_rate': fuel_rate, 
+                'idle_time': idle_min
+            }])
+            
+            event_type = ENGINE_AI_MODELS['event_classifier'].predict(input_df)[0]
+            multi = float(ENGINE_AI_MODELS['multi_regressor'].predict(input_df)[0])
+            wear_units = float(ENGINE_AI_MODELS['wear_regressor'].predict(input_df)[0])
+            multi = round(multi, 2)
+            wear_units = round(wear_units, 6)
         else:
-            event_type, base_wear, multi = "normal", 1.0, 1.0
+            # Fallback to rules if AI not loaded
+            is_high_rpm = rpm > 3200
+            is_high_trq = torque > 450.0
+            is_long_idl = idle_min > 20.0
 
-        wear_units = round(base_wear * multi, 6)
+            if is_overheat:
+                event_type, base_wear, multi = "overheat", 20.0, 10.0
+            elif is_high_rpm:
+                event_type, base_wear, multi = "high_rpm", 5.0, 4.0
+            elif is_high_trq:
+                event_type, base_wear, multi = "high_torque", 3.0, 3.0
+            elif is_long_idl:
+                event_type, base_wear, multi = "long_idle", 2.0, 2.0
+            else:
+                event_type, base_wear, multi = "normal", 1.0, 1.0
+
+            wear_units = round(base_wear * multi, 6)
 
         if event_type != "normal" or len(events) % 20 == 0:
             total_wear += wear_units
