@@ -21,6 +21,20 @@ except Exception as e:
     ENGINE_AI_MODELS = None
     logging.warning(f"Could not load AI model for engine wear: {e}")
 
+try:
+    BRAKE_AI_MODEL_PATH = os.path.join(os.path.dirname(__file__), 'brake_wear_model.pkl')
+    BRAKE_AI_MODELS = joblib.load(BRAKE_AI_MODEL_PATH)
+except Exception as e:
+    BRAKE_AI_MODELS = None
+    logging.warning(f"Could not load AI model for brake wear: {e}")
+
+try:
+    TIRE_AI_MODEL_PATH = os.path.join(os.path.dirname(__file__), 'tire_wear_model.pkl')
+    TIRE_AI_MODELS = joblib.load(TIRE_AI_MODEL_PATH)
+except Exception as e:
+    TIRE_AI_MODELS = None
+    logging.warning(f"Could not load AI model for tire wear: {e}")
+
 # ── Wear Thresholds & Constants ──────────────────────────────
 HARSH_BRAKE_G     = -0.35
 HEAVY_LOAD_RATIO  = 0.85
@@ -154,24 +168,36 @@ def process_vehicle_brakes(db: Session, vehicle_id: str, reg_no: str):
             energy = round(0.5 * gvw * (v_ms ** 2), 2)
             
             # Classify
-            is_harsh    = accel_x < HARSH_BRAKE_G
-            is_heavy    = gvw > (gvw_max * HEAVY_LOAD_RATIO)
-            is_downhill = gps_slope < DOWNHILL_SLOPE
-
-            if is_harsh and is_downhill:
-                event_type, base_wear = "downhill_harsh", 10.0
-            elif is_harsh and is_heavy:
-                event_type, base_wear = "heavy_harsh", 8.0
-            elif is_harsh:
-                event_type, base_wear = "harsh", 5.0
-            elif speed > 40:
-                event_type, base_wear = "medium", 2.0
+            if BRAKE_AI_MODELS:
+                input_df = pd.DataFrame([{
+                    'speed': speed,
+                    'accel_x': accel_x,
+                    'gvw': gvw,
+                    'gps_slope': gps_slope
+                }])
+                event_type = BRAKE_AI_MODELS['event_classifier'].predict(input_df)[0]
+                severity_multi = float(BRAKE_AI_MODELS['multi_regressor'].predict(input_df)[0])
+                wear_units = float(BRAKE_AI_MODELS['wear_regressor'].predict(input_df)[0])
             else:
-                event_type, base_wear = "light", 1.0
+                is_harsh    = accel_x < HARSH_BRAKE_G
+                is_heavy    = gvw > (gvw_max * HEAVY_LOAD_RATIO)
+                is_downhill = gps_slope < DOWNHILL_SLOPE
 
-            raw_multiplier = 1.0 + (abs(accel_x) * 2.0) + (speed / 100.0)
-            severity_multi = min(round(raw_multiplier, 2), MAX_MULTIPLIER)
-            wear_units     = round(base_wear * severity_multi, 4)
+                if is_harsh and is_downhill:
+                    event_type, base_wear = "downhill_harsh", 10.0
+                elif is_harsh and is_heavy:
+                    event_type, base_wear = "heavy_harsh", 8.0
+                elif is_harsh:
+                    event_type, base_wear = "harsh", 5.0
+                elif speed > 40:
+                    event_type, base_wear = "medium", 2.0
+                else:
+                    event_type, base_wear = "light", 1.0
+
+                raw_multiplier = 1.0 + (abs(accel_x) * 2.0) + (speed / 100.0)
+                severity_multi = min(round(raw_multiplier, 2), MAX_MULTIPLIER)
+                wear_units     = round(base_wear * severity_multi, 4)
+                
             total_wear    += wear_units
 
             events.append({
@@ -392,30 +418,41 @@ def process_vehicle_tires(db: Session, vehicle_id: str, reg_no: str):
         dist_km = speed * (1.0 / 3600.0)
         vibration_rms = abs(accel_z)
 
-        is_high_speed   = speed > HIGH_SPEED_KMH
-        is_harsh_corner = abs(lateral_g) > HARSH_CORNER_G
-        is_overload     = gvw > (gvw_max * OVERLOAD_RATIO)
-        is_rough        = vibration_rms > ROUGH_ROAD_RMS
-
-        if is_rough:
-            event_type, multiplier = "rough_road", 3.0
-        elif is_overload:
-            event_type, multiplier = "overload", 2.5
-        elif is_harsh_corner:
-            event_type, multiplier = "harsh_corner", 2.0
-        elif is_high_speed:
-            event_type, multiplier = "high_speed", 1.5
+        if TIRE_AI_MODELS:
+            input_df = pd.DataFrame([{
+                'speed': speed,
+                'lateral_g': lateral_g,
+                'accel_z': accel_z,
+                'gvw': gvw
+            }])
+            event_type = TIRE_AI_MODELS['event_classifier'].predict(input_df)[0]
+            multiplier = float(TIRE_AI_MODELS['multi_regressor'].predict(input_df)[0])
+            wear_units = float(TIRE_AI_MODELS['wear_regressor'].predict(input_df)[0])
         else:
-            event_type, multiplier = "normal", 1.0
+            is_high_speed   = speed > HIGH_SPEED_KMH
+            is_harsh_corner = abs(lateral_g) > HARSH_CORNER_G
+            is_overload     = gvw > (gvw_max * OVERLOAD_RATIO)
+            is_rough        = vibration_rms > ROUGH_ROAD_RMS
 
-        load_factor = gvw / gvw_max
-        raw_wear = (
-            a * dist_km +
-            b * abs(lateral_g) +
-            c * load_factor +
-            d * vibration_rms
-        )
-        wear_units = round(raw_wear * multiplier, 6)
+            if is_rough:
+                event_type, multiplier = "rough_road", 3.0
+            elif is_overload:
+                event_type, multiplier = "overload", 2.5
+            elif is_harsh_corner:
+                event_type, multiplier = "harsh_corner", 2.0
+            elif is_high_speed:
+                event_type, multiplier = "high_speed", 1.5
+            else:
+                event_type, multiplier = "normal", 1.0
+
+            load_factor = gvw / gvw_max
+            raw_wear = (
+                a * dist_km +
+                b * abs(lateral_g) +
+                c * load_factor +
+                d * vibration_rms
+            )
+            wear_units = round(raw_wear * multiplier, 6)
 
         if event_type != "normal" or len(events) % 15 == 0:
             total_wear += wear_units
