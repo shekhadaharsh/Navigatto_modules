@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from database.db import SessionLocal
-from maintenance_module.engines import process_vehicle_engine, run_alert_check
+from maintenance_module.engines import process_vehicle_engine, process_vehicle_brakes, process_vehicle_tires, run_alert_check
 from sqlalchemy import text
 
 def simulate_telemetry():
@@ -23,15 +23,24 @@ def simulate_telemetry():
         vid, reg_no = vehicles[0]
         print(f"Selected Vehicle: {reg_no} (ID: {vid})")
 
-        # Create some fake live telemetry data (3 rows)
+        # Create some fake live telemetry data (3 rows Engine + Brake + Tire)
         now = datetime.utcnow()
         fake_data = [
+            # Normal Driving
             {"id": str(uuid.uuid4()), "vid": vid, "ts": now - timedelta(minutes=3),
-             "rpm": 1500, "temp": 85.0, "load": 30.0, "fuel": 5.0, "idle": 0.0},
+             "rpm": 1500, "temp": 85.0, "load": 30.0, "fuel": 5.0, "idle": 0.0,
+             "brake": 0, "speed": 40.0, "accel": 0.0, "gvw": 10000.0, "slope": 0.0,
+             "lateral_g": 0.1, "accel_z": 0.05, "odometer": 10000.0},
+            # Harsh Cornering on Rough Road
             {"id": str(uuid.uuid4()), "vid": vid, "ts": now - timedelta(minutes=2),
-             "rpm": 2000, "temp": 95.0, "load": 95.0, "fuel": 30.0, "idle": 0.0},
+             "rpm": 2000, "temp": 95.0, "load": 95.0, "fuel": 30.0, "idle": 0.0,
+             "brake": 0, "speed": 60.0, "accel": 0.0, "gvw": 15000.0, "slope": 0.0,
+             "lateral_g": 0.6, "accel_z": 0.3, "odometer": 10000.5},
+            # High Speed driving
             {"id": str(uuid.uuid4()), "vid": vid, "ts": now - timedelta(minutes=1),
-             "rpm": 2500, "temp": 110.0, "load": 60.0, "fuel": 10.0, "idle": 0.0}
+             "rpm": 2500, "temp": 110.0, "load": 60.0, "fuel": 10.0, "idle": 0.0,
+             "brake": 0, "speed": 110.0, "accel": 0.0, "gvw": 12000.0, "slope": 0.0,
+             "lateral_g": 0.05, "accel_z": 0.02, "odometer": 10001.0}
         ]
 
         print("\nInserting 3 new fake Telemetry rows into 'raw_telemetry'...")
@@ -40,10 +49,14 @@ def simulate_telemetry():
                 text("""
                     INSERT INTO raw_telemetry (
                         vehicle_id, ts, rpm, coolant_temp, engine_load, fuel_rate, idle_time, 
-                        speed, ignition, engine_torque, oil_pressure
+                        speed, ignition, engine_torque, oil_pressure,
+                        brake_pedal, accel_x, gvw, gps_slope,
+                        accel_y, accel_z, odometer
                     ) VALUES (
                         :vid, :ts, :rpm, :temp, :load, :fuel, :idle, 
-                        50.0, 1, 0.0, 350.0
+                        :speed, 1, 0.0, 350.0,
+                        :brake, :accel, :gvw, :slope,
+                        :lateral_g, :accel_z, :odometer
                     )
                 """),
                 row
@@ -51,9 +64,17 @@ def simulate_telemetry():
         db.commit()
         print("Data inserted successfully!")
 
-        print("\nNow running the AI Wear Engine (process_vehicle_engine) on this new data...")
-        events_processed = process_vehicle_engine(db, vid, reg_no)
-        print(f"AI Engine processed {events_processed} events!")
+        print("\n[AI ENGINE] Processing Engine Wear...")
+        engine_events = process_vehicle_engine(db, vid, reg_no)
+        print(f"Engine AI processed {engine_events} events!")
+
+        print("\n[AI BRAKES] Processing Brake Wear...")
+        brake_events = process_vehicle_brakes(db, vid, reg_no)
+        print(f"Brake AI processed {brake_events} events!")
+        
+        print("\n[AI TIRES] Processing Tire Wear...")
+        tire_events = process_vehicle_tires(db, vid, reg_no)
+        print(f"Tire AI processed {tire_events} events!")
 
         print("\nRunning Alert Check (run_alert_check)...")
         alerts = run_alert_check(db)
