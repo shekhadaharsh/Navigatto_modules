@@ -8,7 +8,7 @@ def test_brake_ai():
     print("========================================\n")
 
     # Load the trained model
-    model_path = os.path.join(os.path.dirname(__file__), 'brake_wear_model.pkl')
+    model_path = os.path.join(os.path.dirname(__file__), 'models', 'brake_wear_model.pkl')
     try:
         models = joblib.load(model_path)
         print("[OK] AI Model successfully loaded from disk!\n")

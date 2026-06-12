@@ -51,7 +51,7 @@ def train():
     }
     
     # Save the bundled models to a .pkl file
-    model_path = os.path.join(os.path.dirname(__file__), 'engine_wear_model.pkl')
+    model_path = os.path.join(os.path.dirname(__file__), 'models', 'engine_wear_model.pkl')
     joblib.dump(models, model_path)
     
     print(f"Success! Model trained and saved to {model_path}")

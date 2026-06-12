@@ -50,7 +50,7 @@ def train():
     }
     
     # Save the bundled models to a .pkl file
-    model_path = os.path.join(os.path.dirname(__file__), 'tire_wear_model.pkl')
+    model_path = os.path.join(os.path.dirname(__file__), 'models', 'tire_wear_model.pkl')
     joblib.dump(models, model_path)
     
     print(f"Success! Tire AI Model trained and saved to {model_path}")

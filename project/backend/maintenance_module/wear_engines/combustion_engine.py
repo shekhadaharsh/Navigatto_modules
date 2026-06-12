@@ -1,3 +1,5 @@
+from sqlalchemy import func
+from .utils import ensure_wear_state_initialized
 """
 Vehicle Maintenance Wear and Alert Engines
 --------------------------------------------
@@ -14,6 +16,7 @@ import os
 import pandas as pd
 import logging
 
+from maintenance_module.model import *
 from .constants import *
 from .ml_loader import get_brake_model, get_engine_model, get_tire_model
 def process_vehicle_engine(db: Session, vehicle_id: str, reg_no: str):
@@ -117,4 +120,3 @@ def process_vehicle_engine(db: Session, vehicle_id: str, reg_no: str):
 
 from maintenance_module.model import MaintenanceAlert
 
-# ── 6. Alert Check Engine ─────────────────────────────────────

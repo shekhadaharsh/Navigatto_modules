@@ -14,6 +14,7 @@ import os
 import pandas as pd
 import logging
 
+from maintenance_module.model import *
 from .constants import *
 from .ml_loader import get_brake_model, get_engine_model, get_tire_model
 def run_alert_check(db: Session):
