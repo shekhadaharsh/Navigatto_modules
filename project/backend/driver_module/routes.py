@@ -202,86 +202,105 @@ def _score_trips_background(trip_ids: list[str]):
 # ─────────────────────────────────────────
 @router.get("/", response_model=list[DriverSummary])
 def get_all_drivers(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    # 1. Fetch all trips with preloaded scores in one single joined query
-    all_trips = (
-        db.query(Trip)
-        .options(joinedload(Trip.score_relation))
+    # 1. Fetch driver names in a single query to avoid N+1 queries
+    drivers_map = {d.driver_id: d.driver_name for d in db.query(Driver.driver_id, Driver.driver_name).all()}
+
+    # 2. Fetch required columns as tuples in a single fast query
+    tuples = (
+        db.query(
+            Trip.trip_id,
+            Trip.driver_id,
+            Trip.distance_km,
+            Trip.trip_duration_min,
+            Trip.accel_events,
+            Trip.brake_events,
+            Trip.over_speed_count,
+            Trip.cornering_events,
+            Trip.idle_time_min,
+            Trip.vehicle_id,
+            Vehicle.vehicle_type,
+            Trip.Total_Odometer,
+            Trip.engine_total_hour,
+            JourneyScore.driver_score
+        )
+        .join(JourneyScore, JourneyScore.trip_id == Trip.trip_id, isouter=True)
+        .join(Vehicle, Vehicle.id == Trip.vehicle_id, isouter=True)
         .order_by(Trip.trip_start.desc())
         .all()
     )
 
-    # 2. Group trips by driver_id in Python
+    # 3. Group trips by driver in Python
     from collections import defaultdict
     driver_trips = defaultdict(list)
-    for t in all_trips:
-        driver_trips[t.driver_id].append(t)
-
-    # Get unique driver_ids with aggregated distance
-    rows = (
-        db.query(
-            Trip.driver_id,
-            func.sum(Trip.distance_km).label("total_distance"),
-        )
-        .group_by(Trip.driver_id)
-        .all()
-    )
+    for row in tuples:
+        driver_trips[row.driver_id].append(row)
 
     result = []
     unscored_trip_ids = []
-    
-    for row in rows:
-        trips = driver_trips[row.driver_id]
-        if not trips:
-            continue
-            
+
+    for driver_id, trips in driver_trips.items():
         ml_scores = []
         rule_scores = []
+        total_distance = 0.0
+
         for t in trips:
-            dual = _dual_score_for_trip(t, calculate_ml=True, full_calculation=False)
-            if dual.get("ml") is not None:
-                ml_scores.append(dual["ml"]["final_score"])
+            distance = t.distance_km or 0.0
+            total_distance += distance
+
+            # If score is in DB, use it directly (0ms)
+            stored_ml = t.driver_score
+            if stored_ml is not None:
+                ml_scores.append(stored_ml)
             else:
-                # Fall back to rule score and queue for background ML scoring
-                ml_scores.append(dual["rule_based"]["final_score"])
+                # Fallback to calculated rule score
+                rule_res = calculate_trip_score(
+                    accel_events=t.accel_events or 0,
+                    brake_events=t.brake_events or 0,
+                    over_speed_count=t.over_speed_count or 0,
+                    cornering_events=t.cornering_events or 0,
+                    idle_time_min=t.idle_time_min or 0.0,
+                    trip_duration_min=t.trip_duration_min or 1.0,
+                    distance_km=distance or 1.0,
+                )
+                ml_scores.append(rule_res["final_score"])
                 unscored_trip_ids.append(t.trip_id)
-            rule_scores.append(dual["rule_based"]["final_score"])
-            
+
+            # Rule score (always calculated for comparative tooltip display)
+            rule_res = calculate_trip_score(
+                accel_events=t.accel_events or 0,
+                brake_events=t.brake_events or 0,
+                over_speed_count=t.over_speed_count or 0,
+                cornering_events=t.cornering_events or 0,
+                idle_time_min=t.idle_time_min or 0.0,
+                trip_duration_min=t.trip_duration_min or 1.0,
+                distance_km=distance or 1.0,
+            )
+            rule_scores.append(rule_res["final_score"])
+
         avg_ml = round(sum(ml_scores) / len(ml_scores), 2) if ml_scores else 0.0
         avg_rule = round(sum(rule_scores) / len(rule_scores), 2) if rule_scores else 0.0
-        
-        active_score = avg_ml
-        
-        # Get driver name from Driver table in DB
-        driver_obj = db.query(Driver).filter(Driver.driver_id == row.driver_id).first()
-        driver_name = driver_obj.driver_name if (driver_obj and driver_obj.driver_name) else f"Driver {row.driver_id.replace('DR', '')}"
-        
-        # Get vehicle type, vehicle_id, odometer, and engine hours from the latest trip
-        latest_trip = trips[0] if trips else None
-        vehicle_type = "Unknown"
-        vehicle_id = "N/A"
-        total_odometer = 0.0
-        engine_hours = 0.0
-        if latest_trip:
-            vehicle_id = latest_trip.vehicle_id or "N/A"
-            total_odometer = latest_trip.Total_Odometer or 0.0
-            engine_hours = latest_trip.engine_total_hour or 0.0
-            if hasattr(latest_trip, "vehicle_type") and latest_trip.vehicle_type:
-                vehicle_type = latest_trip.vehicle_type
-            elif latest_trip.vehicle and latest_trip.vehicle.vehicle_type:
-                vehicle_type = latest_trip.vehicle.vehicle_type
+
+        # Latest trip info (first item due to DESC sort order)
+        latest = trips[0]
+        vehicle_id = latest.vehicle_id or "N/A"
+        vehicle_type = latest.vehicle_type or "Unknown"
+        total_odometer = latest.Total_Odometer or 0.0
+        engine_hours = latest.engine_total_hour or 0.0
+
+        driver_name = drivers_map.get(driver_id) or f"Driver {driver_id.replace('DR', '')}"
 
         result.append(
             DriverSummary(
-                driver_id=row.driver_id,
+                driver_id=driver_id,
                 driver_name=driver_name,
                 vehicle_type=vehicle_type,
                 vehicle_id=vehicle_id,
                 total_odometer_km=total_odometer,
                 engine_total_hours=engine_hours,
                 total_trips=len(trips),
-                avg_score=active_score,
-                risk_level=get_risk_level(active_score),
-                total_distance=round(row.total_distance or 0.0, 2),
+                avg_score=avg_ml,
+                risk_level=get_risk_level(avg_ml),
+                total_distance=round(total_distance, 2),
                 ml_score=avg_ml,
                 rule_based_score=avg_rule,
             )
@@ -289,12 +308,12 @@ def get_all_drivers(background_tasks: BackgroundTasks, db: Session = Depends(get
 
     # Sort by avg_score descending
     result.sort(key=lambda x: x.avg_score, reverse=True)
-    
+
     # Queue unscored trips for background processing in chunks of 50
     if unscored_trip_ids:
         for i in range(0, len(unscored_trip_ids), 50):
             background_tasks.add_task(_score_trips_background, unscored_trip_ids[i:i+50])
-            
+
     return result
 
 
@@ -304,56 +323,78 @@ def get_all_drivers(background_tasks: BackgroundTasks, db: Session = Depends(get
 # ─────────────────────────────────────────
 @router.get("/leaderboard", response_model=LeaderboardResponse)
 def get_leaderboard(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    # 1. Fetch all trips with preloaded scores in one single joined query
-    all_trips = (
-        db.query(Trip)
-        .options(joinedload(Trip.score_relation))
+    # 1. Fetch required columns as tuples in a single query
+    tuples = (
+        db.query(
+            Trip.trip_id,
+            Trip.driver_id,
+            Trip.distance_km,
+            Trip.trip_duration_min,
+            Trip.accel_events,
+            Trip.brake_events,
+            Trip.over_speed_count,
+            Trip.cornering_events,
+            Trip.idle_time_min,
+            JourneyScore.driver_score
+        )
+        .join(JourneyScore, JourneyScore.trip_id == Trip.trip_id, isouter=True)
+        .order_by(Trip.trip_start.desc())
         .all()
     )
 
-    # 2. Group trips by driver_id in Python
+    # 2. Group trips by driver in Python
     from collections import defaultdict
     driver_trips = defaultdict(list)
-    for t in all_trips:
-        driver_trips[t.driver_id].append(t)
-
-    rows = (
-        db.query(
-            Trip.driver_id,
-        )
-        .group_by(Trip.driver_id)
-        .all()
-    )
+    for row in tuples:
+        driver_trips[row.driver_id].append(row)
 
     scored = []
     unscored_trip_ids = []
-    
-    for row in rows:
-        trips = driver_trips[row.driver_id]
-        if not trips:
-            continue
-            
-        # Calculate both ML and Rule-Based averages for comparative column display
+
+    for driver_id, trips in driver_trips.items():
         ml_scores = []
         rule_scores = []
+
         for t in trips:
-            dual = _dual_score_for_trip(t, calculate_ml=True, full_calculation=False)
-            if dual.get("ml") is not None:
-                ml_scores.append(dual["ml"]["final_score"])
+            distance = t.distance_km or 0.0
+
+            # If score is in DB, use it directly (0ms)
+            stored_ml = t.driver_score
+            if stored_ml is not None:
+                ml_scores.append(stored_ml)
             else:
-                ml_scores.append(dual["rule_based"]["final_score"])
+                # Fallback to calculated rule score
+                rule_res = calculate_trip_score(
+                    accel_events=t.accel_events or 0,
+                    brake_events=t.brake_events or 0,
+                    over_speed_count=t.over_speed_count or 0,
+                    cornering_events=t.cornering_events or 0,
+                    idle_time_min=t.idle_time_min or 0.0,
+                    trip_duration_min=t.trip_duration_min or 1.0,
+                    distance_km=distance or 1.0,
+                )
+                ml_scores.append(rule_res["final_score"])
                 unscored_trip_ids.append(t.trip_id)
-            rule_scores.append(dual["rule_based"]["final_score"])
-            
+
+            # Rule score (always calculated for comparative leaderboard display)
+            rule_res = calculate_trip_score(
+                accel_events=t.accel_events or 0,
+                brake_events=t.brake_events or 0,
+                over_speed_count=t.over_speed_count or 0,
+                cornering_events=t.cornering_events or 0,
+                idle_time_min=t.idle_time_min or 0.0,
+                trip_duration_min=t.trip_duration_min or 1.0,
+                distance_km=distance or 1.0,
+            )
+            rule_scores.append(rule_res["final_score"])
+
         avg_ml = round(sum(ml_scores) / len(ml_scores), 2) if ml_scores else 0.0
         avg_rule = round(sum(rule_scores) / len(rule_scores), 2) if rule_scores else 0.0
-        
-        active_score = avg_ml
-        
+
         scored.append({
-            "driver_id":   row.driver_id,
-            "avg_score":   active_score,
-            "risk_level":  get_risk_level(active_score),
+            "driver_id":   driver_id,
+            "avg_score":   avg_ml,
+            "risk_level":  get_risk_level(avg_ml),
             "total_trips": len(trips),
             "ml_score":    avg_ml,
             "rule_based_score": avg_rule,
