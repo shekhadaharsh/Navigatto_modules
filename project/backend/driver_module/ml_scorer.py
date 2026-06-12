@@ -4,21 +4,7 @@ import numpy as np
 import pandas as pd
 from driver_module.scorer import calculate_trip_score, get_risk_level
 
-# ─────────────────────────────────────────────────────────────
-# MODEL VERSION SELECTION
-# USE_ML_MODEL=1 → Old model  → ml_model/    (original, rule-based labels)
-# USE_ML_MODEL=2 → New model  → ml_model_v2/ (context-aware labels, 19 features)
-# ─────────────────────────────────────────────────────────────
-_raw_version = os.getenv("USE_ML_MODEL", "1").strip()
-_ML_MODEL_VERSION = int(_raw_version) if _raw_version.isdigit() else 1
-
-_MODEL_FOLDER_MAP = {
-    1: "ml_model",      # Old — 12 features, rule-based labels
-    2: "ml_model_v2",   # New — 19 features, context-aware labels
-}
-
-# Module-level globals (lazy loaded per version)
-_loaded_version: int = -1
+# Module-level globals
 _model   = None
 _scaler  = None
 _encoder = None
@@ -28,21 +14,21 @@ _failed_loading = False
 def _load_model_assets() -> bool:
     """
     Lazy loads XGBoost model, StandardScaler, and LabelEncoder
-    from the correct versioned folder based on USE_ML_MODEL env var.
+    from the ml_model_v2 folder.
     Returns True if successfully loaded, else False (triggers rule-based fallback).
     """
-    global _model, _scaler, _encoder, _failed_loading, _loaded_version
+    global _model, _scaler, _encoder, _failed_loading
 
     if _failed_loading:
         return False
-    if _model is not None and _loaded_version == _ML_MODEL_VERSION:
+    if _model is not None:
         return True
 
-    # Reset on version switch
+    # Reset
     _model = _scaler = _encoder = None
     _failed_loading = False
 
-    folder_name = _MODEL_FOLDER_MAP.get(_ML_MODEL_VERSION, "ml_model")
+    folder_name = "ml_model_v2"
     model_dir   = os.path.join(os.path.dirname(os.path.abspath(__file__)), folder_name)
 
     model_path   = os.path.join(model_dir, "driver_safety_model.pkl")
@@ -50,7 +36,7 @@ def _load_model_assets() -> bool:
     encoder_path = os.path.join(model_dir, "encoder.pkl")
 
     if not (os.path.exists(model_path) and os.path.exists(scaler_path) and os.path.exists(encoder_path)):
-        print(f"[WARNING] ML model v{_ML_MODEL_VERSION} binaries not found in '{folder_name}/'. "
+        print(f"[WARNING] ML model binaries not found in 'ml_model_v2/'. "
               f"Falling back to Rule-Based scoring.")
         _failed_loading = True
         return False
@@ -59,11 +45,10 @@ def _load_model_assets() -> bool:
         _model   = joblib.load(model_path)
         _scaler  = joblib.load(scaler_path)
         _encoder = joblib.load(encoder_path)
-        _loaded_version = _ML_MODEL_VERSION
-        print(f"[SUCCESS] FleetIQ ML Model v{_ML_MODEL_VERSION} loaded from '{folder_name}/'.")
+        print(f"[SUCCESS] FleetIQ ML Model V2 loaded from 'ml_model_v2/'.")
         return True
     except Exception as e:
-        print(f"[ERROR] Failed to load ML model v{_ML_MODEL_VERSION}: {e}. Falling back to Rule-Based.")
+        print(f"[ERROR] Failed to load ML model: {e}. Falling back to Rule-Based.")
         _failed_loading = True
         return False
 
@@ -84,8 +69,7 @@ def calculate_trip_score_ml(
 ) -> dict:
     """
     ML-based driver safety scoring.
-    Version 1 (USE_ML_MODEL=1): Old model, 12 features from ml_model/ folder.
-    Version 2 (USE_ML_MODEL=2): New context-aware model, 19 features from ml_model_v2/ folder.
+    Uses context-aware model with 19 features from ml_model_v2/ folder.
     Auto-falls back to Rule-Based if model files not found.
     """
 
@@ -114,14 +98,14 @@ def calculate_trip_score_ml(
         except Exception:
             route_encoded = 0
 
-    # ── Step 3: Build feature vector (version-aware) ──
+    # ── Step 3: Build feature vector ──
     dist_km   = float(distance_km or 1.0)
     dur_min   = float(trip_duration_min or 1.0)
     avg_spd   = float(avg_speed_kmh or 0.0)
     max_spd   = float(max_speed_kmh or 0.0)
     rpm       = float(avg_engine_rpm or 0.0)
 
-    # 12 base features (both versions share these)
+    # 12 base features
     base_features = [
         float(accel_events or 0),
         float(brake_events or 0),
@@ -137,35 +121,28 @@ def calculate_trip_score_ml(
         rpm,
     ]
 
-    if _ML_MODEL_VERSION == 2:
-        # 7 derived features — only for new context-aware model (v2)
-        accel_per_km  = float(accel_events or 0)    / dist_km
-        brake_per_km  = float(brake_events or 0)    / dist_km
-        speed_per_km  = float(over_speed_count or 0)/ dist_km
-        corner_per_km = float(cornering_events or 0)/ dist_km
-        idle_pct      = float(idle_time_min or 0.0) / dur_min
-        speed_ratio   = avg_spd / max_spd if max_spd > 0 else 0.0
-        rpm_per_speed = rpm / avg_spd      if avg_spd > 0 else 0.0
+    # 7 derived features — only for new context-aware model (v2)
+    accel_per_km  = float(accel_events or 0)    / dist_km
+    brake_per_km  = float(brake_events or 0)    / dist_km
+    speed_per_km  = float(over_speed_count or 0)/ dist_km
+    corner_per_km = float(cornering_events or 0)/ dist_km
+    idle_pct      = float(idle_time_min or 0.0) / dur_min
+    speed_ratio   = avg_spd / max_spd if max_spd > 0 else 0.0
+    rpm_per_speed = rpm / avg_spd      if avg_spd > 0 else 0.0
 
-        features = base_features + [
-            accel_per_km, brake_per_km, speed_per_km, corner_per_km,
-            idle_pct, speed_ratio, rpm_per_speed
-        ]
-    else:
-        # Version 1 — only 12 features
-        features = base_features
+    features = base_features + [
+        accel_per_km, brake_per_km, speed_per_km, corner_per_km,
+        idle_pct, speed_ratio, rpm_per_speed
+    ]
 
     # ── Step 4: Scale & Predict ──
     feature_cols = [
         "accel_events", "brake_events", "over_speed_count", "cornering_events",
         "idle_time_min", "distance_km", "trip_duration_min", "route_type",
-        "avg_speed_kmh", "max_speed_kmh", "num_stops", "avg_engine_rpm"
+        "avg_speed_kmh", "max_speed_kmh", "num_stops", "avg_engine_rpm",
+        "accel_per_km", "brake_per_km", "speed_per_km", "corner_per_km",
+        "idle_pct", "speed_ratio", "rpm_per_speed"
     ]
-    if _ML_MODEL_VERSION == 2:
-        feature_cols += [
-            "accel_per_km", "brake_per_km", "speed_per_km", "corner_per_km",
-            "idle_pct", "speed_ratio", "rpm_per_speed"
-        ]
 
     features_df     = pd.DataFrame([features], columns=feature_cols)
     features_scaled = _scaler.transform(features_df)
@@ -249,6 +226,6 @@ def calculate_trip_score_ml(
 
         "final_score":    final_score,
         "risk_level":     risk_level,
-        "scoring_method": f"ML v{_ML_MODEL_VERSION}",
+        "scoring_method": "ML v2",
         "ml_confidence":  confidence,
     }
