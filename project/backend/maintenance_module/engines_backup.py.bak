@@ -14,26 +14,39 @@ import os
 import pandas as pd
 import logging
 
-try:
-    AI_MODEL_PATH = os.path.join(os.path.dirname(__file__), 'engine_wear_model.pkl')
-    ENGINE_AI_MODELS = joblib.load(AI_MODEL_PATH)
-except Exception as e:
-    ENGINE_AI_MODELS = None
-    logging.warning(f"Could not load AI model for engine wear: {e}")
+_ENGINE_AI_MODELS = None
+_BRAKE_AI_MODELS = None
+_TIRE_AI_MODELS = None
 
-try:
-    BRAKE_AI_MODEL_PATH = os.path.join(os.path.dirname(__file__), 'brake_wear_model.pkl')
-    BRAKE_AI_MODELS = joblib.load(BRAKE_AI_MODEL_PATH)
-except Exception as e:
-    BRAKE_AI_MODELS = None
-    logging.warning(f"Could not load AI model for brake wear: {e}")
+def get_engine_model():
+    global _ENGINE_AI_MODELS
+    if _ENGINE_AI_MODELS is None:
+        try:
+            path = os.path.join(os.path.dirname(__file__), 'engine_wear_model.pkl')
+            _ENGINE_AI_MODELS = joblib.load(path)
+        except Exception as e:
+            logging.warning(f"Could not load AI model for engine wear: {e}")
+    return _ENGINE_AI_MODELS
 
-try:
-    TIRE_AI_MODEL_PATH = os.path.join(os.path.dirname(__file__), 'tire_wear_model.pkl')
-    TIRE_AI_MODELS = joblib.load(TIRE_AI_MODEL_PATH)
-except Exception as e:
-    TIRE_AI_MODELS = None
-    logging.warning(f"Could not load AI model for tire wear: {e}")
+def get_brake_model():
+    global _BRAKE_AI_MODELS
+    if _BRAKE_AI_MODELS is None:
+        try:
+            path = os.path.join(os.path.dirname(__file__), 'brake_wear_model.pkl')
+            _BRAKE_AI_MODELS = joblib.load(path)
+        except Exception as e:
+            logging.warning(f"Could not load AI model for brake wear: {e}")
+    return _BRAKE_AI_MODELS
+
+def get_tire_model():
+    global _TIRE_AI_MODELS
+    if _TIRE_AI_MODELS is None:
+        try:
+            path = os.path.join(os.path.dirname(__file__), 'tire_wear_model.pkl')
+            _TIRE_AI_MODELS = joblib.load(path)
+        except Exception as e:
+            logging.warning(f"Could not load AI model for tire wear: {e}")
+    return _TIRE_AI_MODELS
 
 # ── Wear Thresholds & Constants ──────────────────────────────
 HARSH_BRAKE_G     = -0.35
@@ -66,6 +79,9 @@ DEFAULT_BASE_LIFE = {
 }
 
 
+from maintenance_module.model import ComponentWearState, ComponentBaseLife
+import uuid
+
 # ── Helper: Ensure Wear State Initialized ─────────────────────
 def ensure_wear_state_initialized(db: Session, vehicle_id: str):
     """
@@ -73,30 +89,34 @@ def ensure_wear_state_initialized(db: Session, vehicle_id: str):
     If not, reads from component_base_life or inserts defaults.
     """
     for component, def_life in DEFAULT_BASE_LIFE.items():
-        res = db.execute(
-            text("SELECT COUNT(*) FROM component_wear_state WHERE vehicle_id = :vid AND component = :comp"),
-            {"vid": vehicle_id, "comp": component}
-        ).scalar()
+        count = db.query(ComponentWearState).filter(
+            ComponentWearState.vehicle_id == vehicle_id,
+            ComponentWearState.component == component
+        ).count()
         
-        if res == 0:
+        if count == 0:
             # Check base life config
-            base_life = db.execute(
-                text("SELECT base_life FROM component_base_life WHERE vehicle_id = :vid AND component = :comp"),
-                {"vid": vehicle_id, "comp": component}
-            ).scalar()
+            base_life_record = db.query(ComponentBaseLife).filter(
+                ComponentBaseLife.vehicle_id == vehicle_id,
+                ComponentBaseLife.component == component
+            ).first()
             
-            if not base_life:
-                base_life = def_life
+            base_life = base_life_record.base_life if base_life_record else def_life
                 
-            db.execute(
-                text("""
-                    INSERT INTO component_wear_state (id, vehicle_id, component, accumulated_wear, base_life, last_updated)
-                    VALUES (NEWID(), :vid, :comp, 0.0, :life, SYSUTCDATETIME())
-                """),
-                {"vid": vehicle_id, "comp": component, "life": base_life}
+            new_state = ComponentWearState(
+                id=str(uuid.uuid4()),
+                vehicle_id=vehicle_id,
+                component=component,
+                accumulated_wear=0.0,
+                base_life=base_life,
+                last_updated=datetime.utcnow()
             )
+            db.add(new_state)
     db.commit()
 
+
+from maintenance_module.model import BrakeWearEvent, RawTelemetry
+from sqlalchemy import func
 
 # ── 1. Brake Wear Engine ──────────────────────────────────────
 def process_vehicle_brakes(db: Session, vehicle_id: str, reg_no: str):
@@ -104,54 +124,36 @@ def process_vehicle_brakes(db: Session, vehicle_id: str, reg_no: str):
     ensure_wear_state_initialized(db, vehicle_id)
     
     # 1. Get latest processed timestamp to prevent double counting
-    last_ts = db.execute(
-        text("SELECT MAX(ts) FROM brake_wear_events WHERE vehicle_id = :vid"),
-        {"vid": vehicle_id}
+    last_ts = db.query(func.max(BrakeWearEvent.ts)).filter(
+        BrakeWearEvent.vehicle_id == vehicle_id
     ).scalar()
     
     # 2. Fetch new telemetry rows
+    telemetry_query = db.query(RawTelemetry).filter(RawTelemetry.vehicle_id == vehicle_id)
     if last_ts:
-        result = db.execute(
-            text("""
-                SELECT id, ts, brake_pedal, speed, accel_x, gvw, gps_slope, trip_id
-                FROM raw_telemetry
-                WHERE vehicle_id = :vid AND ts > :last_ts
-                ORDER BY ts ASC
-            """),
-            {"vid": vehicle_id, "last_ts": last_ts}
-        )
-    else:
-        result = db.execute(
-            text("""
-                SELECT id, ts, brake_pedal, speed, accel_x, gvw, gps_slope, trip_id
-                FROM raw_telemetry
-                WHERE vehicle_id = :vid
-                ORDER BY ts ASC
-            """),
-            {"vid": vehicle_id}
-        )
+        telemetry_query = telemetry_query.filter(RawTelemetry.ts > last_ts)
         
-    rows = result.fetchall()
+    rows = telemetry_query.order_by(RawTelemetry.ts.asc()).all()
     if not rows:
         return 0
 
     # 3. Determine max weight
-    gvw_max = float(db.execute(
-        text("SELECT MAX(gvw) FROM raw_telemetry WHERE vehicle_id = :vid"),
-        {"vid": vehicle_id}
+    gvw_max = float(db.query(func.max(RawTelemetry.gvw)).filter(
+        RawTelemetry.vehicle_id == vehicle_id
     ).scalar() or 20000.0)
 
     prev_brake = 0
-    brake_count = db.execute(
-        text("SELECT COUNT(*) FROM brake_wear_events WHERE vehicle_id = :vid"),
-        {"vid": vehicle_id}
-    ).scalar() or 0
+    brake_count = db.query(BrakeWearEvent).filter(
+        BrakeWearEvent.vehicle_id == vehicle_id
+    ).count()
     
     events = []
     total_wear = 0.0
 
     for row in rows:
-        _, ts, brake_pedal, speed, accel_x, gvw, gps_slope, trip_id = row
+        ts, brake_pedal, speed, accel_x, gvw, gps_slope, trip_id = (
+            row.ts, row.brake_pedal, row.speed, row.accel_x, row.gvw, row.gps_slope, row.trip_id
+        )
         
         brake_pedal = int(brake_pedal) if brake_pedal is not None else 0
         speed       = float(speed)     if speed       is not None else 0.0
@@ -168,16 +170,17 @@ def process_vehicle_brakes(db: Session, vehicle_id: str, reg_no: str):
             energy = round(0.5 * gvw * (v_ms ** 2), 2)
             
             # Classify
-            if BRAKE_AI_MODELS:
+            model = get_brake_model()
+            if model:
                 input_df = pd.DataFrame([{
                     'speed': speed,
                     'accel_x': accel_x,
                     'gvw': gvw,
                     'gps_slope': gps_slope
                 }])
-                event_type = BRAKE_AI_MODELS['event_classifier'].predict(input_df)[0]
-                severity_multi = float(BRAKE_AI_MODELS['multi_regressor'].predict(input_df)[0])
-                wear_units = float(BRAKE_AI_MODELS['wear_regressor'].predict(input_df)[0])
+                event_type = model['event_classifier'].predict(input_df)[0]
+                severity_multi = float(model['multi_regressor'].predict(input_df)[0])
+                wear_units = float(model['wear_regressor'].predict(input_df)[0])
             else:
                 is_harsh    = accel_x < HARSH_BRAKE_G
                 is_heavy    = gvw > (gvw_max * HEAVY_LOAD_RATIO)
@@ -201,79 +204,52 @@ def process_vehicle_brakes(db: Session, vehicle_id: str, reg_no: str):
             total_wear    += wear_units
 
             events.append({
-                "vid": vehicle_id, "trip_id": trip_id, "ts": ts,
-                "cnt": brake_count, "type": event_type, "speed": speed,
-                "gvw": gvw, "slope": gps_slope, "accel": accel_x,
-                "energy": energy, "multi": severity_multi, "wear": wear_units
+                "vehicle_id": vehicle_id, "trip_id": trip_id, "ts": ts,
+                "brake_count": brake_count, "event_type": event_type, "speed_kmh": speed,
+                "gvw_kg": gvw, "gps_slope": gps_slope, "accel_x": accel_x,
+                "energy_joules": energy, "severity_multi": severity_multi, "wear_units": wear_units
             })
             
         prev_brake = brake_pedal
 
     if events:
         # Bulk Insert Events
-        db.execute(
-            text("""
-                INSERT INTO brake_wear_events (
-                    vehicle_id, trip_id, ts, brake_count, event_type,
-                    speed_kmh, gvw_kg, gps_slope, accel_x,
-                    energy_joules, severity_multi, wear_units
-                ) VALUES (:vid, :trip_id, :ts, :cnt, :type, :speed, :gvw, :slope, :accel, :energy, :multi, :wear)
-            """),
-            events
-        )
+        db.bulk_insert_mappings(BrakeWearEvent, events)
         
         # Update Wear State
-        db.execute(
-            text("""
-                UPDATE component_wear_state
-                SET accumulated_wear = accumulated_wear + :wear,
-                    last_updated     = SYSUTCDATETIME()
-                WHERE vehicle_id = :vid AND component = 'brake'
-            """),
-            {"wear": total_wear, "vid": vehicle_id}
-        )
+        state = db.query(ComponentWearState).filter(
+            ComponentWearState.vehicle_id == vehicle_id,
+            ComponentWearState.component == 'brake'
+        ).first()
+        if state:
+            state.accumulated_wear = float(state.accumulated_wear) + total_wear
+            state.last_updated = datetime.utcnow()
+            
         db.commit()
 
     return len(events)
 
 
+from maintenance_module.model import ClutchWearEvent
+
 # ── 2. Clutch Wear Engine ─────────────────────────────────────
 def process_vehicle_clutch(db: Session, vehicle_id: str, reg_no: str):
     ensure_wear_state_initialized(db, vehicle_id)
     
-    last_ts = db.execute(
-        text("SELECT MAX(ts) FROM clutch_wear_events WHERE vehicle_id = :vid"),
-        {"vid": vehicle_id}
+    last_ts = db.query(func.max(ClutchWearEvent.ts)).filter(
+        ClutchWearEvent.vehicle_id == vehicle_id
     ).scalar()
     
+    telemetry_query = db.query(RawTelemetry).filter(RawTelemetry.vehicle_id == vehicle_id)
     if last_ts:
-        result = db.execute(
-            text("""
-                SELECT ts, rpm, speed, engine_torque, gvw, gps_slope, trip_id
-                FROM raw_telemetry
-                WHERE vehicle_id = :vid AND ts > :last_ts
-                ORDER BY ts ASC
-            """),
-            {"vid": vehicle_id, "last_ts": last_ts}
-        )
-    else:
-        result = db.execute(
-            text("""
-                SELECT ts, rpm, speed, engine_torque, gvw, gps_slope, trip_id
-                FROM raw_telemetry
-                WHERE vehicle_id = :vid
-                ORDER BY ts ASC
-            """),
-            {"vid": vehicle_id}
-        )
+        telemetry_query = telemetry_query.filter(RawTelemetry.ts > last_ts)
         
-    rows = result.fetchall()
+    rows = telemetry_query.order_by(RawTelemetry.ts.asc()).all()
     if not rows:
         return 0
 
-    gvw_max = float(db.execute(
-        text("SELECT MAX(gvw) FROM raw_telemetry WHERE vehicle_id = :vid"),
-        {"vid": vehicle_id}
+    gvw_max = float(db.query(func.max(RawTelemetry.gvw)).filter(
+        RawTelemetry.vehicle_id == vehicle_id
     ).scalar() or 20000.0)
 
     prev_rpm = 0
@@ -282,7 +258,9 @@ def process_vehicle_clutch(db: Session, vehicle_id: str, reg_no: str):
     total_wear = 0.0
 
     for row in rows:
-        ts, rpm, speed, torque, gvw, gps_slope, trip_id = row
+        ts, rpm, speed, torque, gvw, gps_slope, trip_id = (
+            row.ts, row.rpm, row.speed, row.engine_torque, row.gvw, row.gps_slope, row.trip_id
+        )
         
         rpm       = int(rpm)         if rpm       is not None else 0
         speed     = float(speed)     if speed     is not None else 0.0
@@ -320,91 +298,66 @@ def process_vehicle_clutch(db: Session, vehicle_id: str, reg_no: str):
             if event_type != "normal" or len(events) % 10 == 0:
                 total_wear += wear_units
                 events.append({
-                    "vid": vehicle_id, "trip_id": trip_id, "ts": ts,
-                    "type": event_type, "rpm": rpm, "speed": speed,
-                    "slip": slip_ratio, "torque": torque, "gvw": gvw,
-                    "slope": gps_slope, "multi": severity_multi, "wear": wear_units
+                    "vehicle_id": vehicle_id, "trip_id": trip_id, "ts": ts,
+                    "event_type": event_type, "rpm": rpm, "speed_kmh": speed,
+                    "slip_ratio": slip_ratio, "torque_nm": torque, "gvw_kg": gvw,
+                    "gps_slope": gps_slope, "severity_multi": severity_multi, "wear_units": wear_units
                 })
 
         prev_rpm   = rpm
         prev_speed = speed
 
     if events:
-        db.execute(
-            text("""
-                INSERT INTO clutch_wear_events (
-                    vehicle_id, trip_id, ts, event_type, rpm, speed_kmh,
-                    slip_ratio, torque_nm, gvw_kg, gps_slope,
-                    severity_multi, wear_units
-                ) VALUES (:vid, :trip_id, :ts, :type, :rpm, :speed, :slip, :torque, :gvw, :slope, :multi, :wear)
-            """),
-            events
-        )
+        db.bulk_insert_mappings(ClutchWearEvent, events)
         
-        db.execute(
-            text("""
-                UPDATE component_wear_state
-                SET accumulated_wear = accumulated_wear + :wear,
-                    last_updated     = SYSUTCDATETIME()
-                WHERE vehicle_id = :vid AND component = 'clutch'
-            """),
-            {"wear": total_wear, "vid": vehicle_id}
-        )
+        state = db.query(ComponentWearState).filter(
+            ComponentWearState.vehicle_id == vehicle_id,
+            ComponentWearState.component == 'clutch'
+        ).first()
+        if state:
+            state.accumulated_wear = float(state.accumulated_wear) + total_wear
+            state.last_updated = datetime.utcnow()
+            
         db.commit()
 
     return len(events)
 
 
+from maintenance_module.model import TireWearEvent
+
 # ── 3. Tire Wear Engine ───────────────────────────────────────
 def process_vehicle_tires(db: Session, vehicle_id: str, reg_no: str):
     ensure_wear_state_initialized(db, vehicle_id)
     
-    last_ts = db.execute(
-        text("SELECT MAX(ts) FROM tire_wear_events WHERE vehicle_id = :vid"),
-        {"vid": vehicle_id}
+    last_ts = db.query(func.max(TireWearEvent.ts)).filter(
+        TireWearEvent.vehicle_id == vehicle_id
     ).scalar()
     
+    telemetry_query = db.query(RawTelemetry).filter(RawTelemetry.vehicle_id == vehicle_id)
     if last_ts:
-        result = db.execute(
-            text("""
-                SELECT ts, speed, accel_y, accel_z, gvw, odometer, trip_id
-                FROM raw_telemetry
-                WHERE vehicle_id = :vid AND ts > :last_ts
-                ORDER BY ts ASC
-            """),
-            {"vid": vehicle_id, "last_ts": last_ts}
-        )
-    else:
-        result = db.execute(
-            text("""
-                SELECT ts, speed, accel_y, accel_z, gvw, odometer, trip_id
-                FROM raw_telemetry
-                WHERE vehicle_id = :vid
-                ORDER BY ts ASC
-            """),
-            {"vid": vehicle_id}
-        )
+        telemetry_query = telemetry_query.filter(RawTelemetry.ts > last_ts)
         
-    rows = result.fetchall()
+    rows = telemetry_query.order_by(RawTelemetry.ts.asc()).all()
     if not rows:
         return 0
 
-    # Fetch tire coefficients
+    # Fetch tire coefficients - using raw SQL here since tire_profiles isn't an ORM model yet
     coeffs = db.execute(
         text("SELECT coeff_a, coeff_b, coeff_c, coeff_d FROM tire_profiles WHERE tire_type = 'michelin_x'")
     ).fetchone()
     a, b, c, d = (float(coeffs[0]), float(coeffs[1]), float(coeffs[2]), float(coeffs[3])) if coeffs else (1.0, 1.2, 1.1, 0.8)
 
-    gvw_max = float(db.execute(
-        text("SELECT MAX(gvw) FROM raw_telemetry WHERE vehicle_id = :vid"),
-        {"vid": vehicle_id}
+    gvw_max = float(db.query(func.max(RawTelemetry.gvw)).filter(
+        RawTelemetry.vehicle_id == vehicle_id
     ).scalar() or 20000.0)
 
     events = []
     total_wear = 0.0
 
     for row in rows:
-        ts, speed, lateral_g, accel_z, gvw, odometer, trip_id = row
+        ts, speed, lateral_g, accel_z, gvw, odometer, trip_id = (
+            row.ts, row.speed, row.accel_y, row.accel_z, row.gvw, row.odometer, row.trip_id
+        )
         
         speed     = float(speed)     if speed     is not None else 0.0
         lateral_g = float(lateral_g) if lateral_g is not None else 0.0
@@ -418,16 +371,17 @@ def process_vehicle_tires(db: Session, vehicle_id: str, reg_no: str):
         dist_km = speed * (1.0 / 3600.0)
         vibration_rms = abs(accel_z)
 
-        if TIRE_AI_MODELS:
+        model = get_tire_model()
+        if model:
             input_df = pd.DataFrame([{
                 'speed': speed,
                 'lateral_g': lateral_g,
                 'accel_z': accel_z,
                 'gvw': gvw
             }])
-            event_type = TIRE_AI_MODELS['event_classifier'].predict(input_df)[0]
-            multiplier = float(TIRE_AI_MODELS['multi_regressor'].predict(input_df)[0])
-            wear_units = float(TIRE_AI_MODELS['wear_regressor'].predict(input_df)[0])
+            event_type = model['event_classifier'].predict(input_df)[0]
+            multiplier = float(model['multi_regressor'].predict(input_df)[0])
+            wear_units = float(model['wear_regressor'].predict(input_df)[0])
         else:
             is_high_speed   = speed > HIGH_SPEED_KMH
             is_harsh_corner = abs(lateral_g) > HARSH_CORNER_G
@@ -457,83 +411,58 @@ def process_vehicle_tires(db: Session, vehicle_id: str, reg_no: str):
         if event_type != "normal" or len(events) % 15 == 0:
             total_wear += wear_units
             events.append({
-                "vid": vehicle_id, "trip_id": trip_id, "ts": ts,
-                "dist": dist_km, "speed": speed, "latg": lateral_g,
-                "gvw": gvw, "vib": vibration_rms, "type": event_type,
-                "multi": multiplier, "wear": wear_units
+                "vehicle_id": vehicle_id, "trip_id": trip_id, "ts": ts,
+                "distance_km": dist_km, "speed_kmh": speed, "lateral_g": lateral_g,
+                "gvw_kg": gvw, "vibration_rms": vibration_rms, "event_type": event_type,
+                "severity_multi": multiplier, "wear_units": wear_units
             })
 
     if events:
-        db.execute(
-            text("""
-                INSERT INTO tire_wear_events (
-                    vehicle_id, trip_id, ts, distance_km, speed_kmh,
-                    lateral_g, gvw_kg, vibration_rms,
-                    event_type, severity_multi, wear_units
-                ) VALUES (:vid, :trip_id, :ts, :dist, :speed, :latg, :gvw, :vib, :type, :multi, :wear)
-            """),
-            events
-        )
+        db.bulk_insert_mappings(TireWearEvent, events)
         
-        db.execute(
-            text("""
-                UPDATE component_wear_state
-                SET accumulated_wear = accumulated_wear + :wear,
-                    last_updated     = SYSUTCDATETIME()
-                WHERE vehicle_id = :vid AND component = 'tire'
-            """),
-            {"wear": total_wear, "vid": vehicle_id}
-        )
+        state = db.query(ComponentWearState).filter(
+            ComponentWearState.vehicle_id == vehicle_id,
+            ComponentWearState.component == 'tire'
+        ).first()
+        if state:
+            state.accumulated_wear = float(state.accumulated_wear) + total_wear
+            state.last_updated = datetime.utcnow()
+            
         db.commit()
 
     return len(events)
 
 
+from maintenance_module.model import BatteryWearEvent
+
 # ── 4. Battery Wear Engine ────────────────────────────────────
 def process_vehicle_battery(db: Session, vehicle_id: str, reg_no: str):
     ensure_wear_state_initialized(db, vehicle_id)
     
-    last_ts = db.execute(
-        text("SELECT MAX(ts) FROM battery_wear_events WHERE vehicle_id = :vid"),
-        {"vid": vehicle_id}
+    last_ts = db.query(func.max(BatteryWearEvent.ts)).filter(
+        BatteryWearEvent.vehicle_id == vehicle_id
     ).scalar()
     
+    telemetry_query = db.query(RawTelemetry).filter(RawTelemetry.vehicle_id == vehicle_id)
     if last_ts:
-        result = db.execute(
-            text("""
-                SELECT ts, ignition, battery_voltage, idle_time, trip_id
-                FROM raw_telemetry
-                WHERE vehicle_id = :vid AND ts > :last_ts
-                ORDER BY ts ASC
-            """),
-            {"vid": vehicle_id, "last_ts": last_ts}
-        )
-    else:
-        result = db.execute(
-            text("""
-                SELECT ts, ignition, battery_voltage, idle_time, trip_id
-                FROM raw_telemetry
-                WHERE vehicle_id = :vid
-                ORDER BY ts ASC
-            """),
-            {"vid": vehicle_id}
-        )
+        telemetry_query = telemetry_query.filter(RawTelemetry.ts > last_ts)
         
-    rows = result.fetchall()
+    rows = telemetry_query.order_by(RawTelemetry.ts.asc()).all()
     if not rows:
         return 0
 
     prev_ignition = 1
-    startup_cycle = db.execute(
-        text("SELECT COUNT(*) FROM battery_wear_events WHERE vehicle_id = :vid"),
-        {"vid": vehicle_id}
-    ).scalar() or 0
+    startup_cycle = db.query(BatteryWearEvent).filter(
+        BatteryWearEvent.vehicle_id == vehicle_id
+    ).count()
     
     events = []
     total_wear = 0.0
 
     for row in rows:
-        ts, ignition, batt_v, idle_time, trip_id = row
+        ts, ignition, batt_v, idle_time, trip_id = (
+            row.ts, row.ignition, row.battery_voltage, row.idle_time, row.trip_id
+        )
         
         ignition  = int(ignition)      if ignition  is not None else 0
         batt_v    = float(batt_v)      if batt_v    is not None else V_NOMINAL
@@ -562,71 +491,45 @@ def process_vehicle_battery(db: Session, vehicle_id: str, reg_no: str):
             total_wear    += wear_units
 
             events.append({
-                "vid": vehicle_id, "trip_id": trip_id, "ts": ts,
-                "cycle": startup_cycle, "type": event_type,
-                "v_nom": V_NOMINAL, "v_load": v_under_load, "soh": soh,
-                "idle": idle_time, "multi": severity_multi, "wear": wear_units
+                "vehicle_id": vehicle_id, "trip_id": trip_id, "ts": ts,
+                "startup_cycle": startup_cycle, "event_type": event_type,
+                "v_nominal": V_NOMINAL, "v_under_load": v_under_load, "soh_percent": soh,
+                "idle_minutes": idle_time, "severity_multi": severity_multi, "wear_units": wear_units
             })
 
         prev_ignition = ignition
 
     if events:
-        db.execute(
-            text("""
-                INSERT INTO battery_wear_events (
-                    vehicle_id, trip_id, ts, startup_cycle, event_type,
-                    v_nominal, v_under_load, soh_percent, idle_minutes,
-                    severity_multi, wear_units
-                ) VALUES (:vid, :trip_id, :ts, :cycle, :type, :v_nom, :v_load, :soh, :idle, :multi, :wear)
-            """),
-            events
-        )
+        db.bulk_insert_mappings(BatteryWearEvent, events)
         
-        db.execute(
-            text("""
-                UPDATE component_wear_state
-                SET accumulated_wear = accumulated_wear + :wear,
-                    last_updated     = SYSUTCDATETIME()
-                WHERE vehicle_id = :vid AND component = 'battery'
-            """),
-            {"wear": total_wear, "vid": vehicle_id}
-        )
+        state = db.query(ComponentWearState).filter(
+            ComponentWearState.vehicle_id == vehicle_id,
+            ComponentWearState.component == 'battery'
+        ).first()
+        if state:
+            state.accumulated_wear = float(state.accumulated_wear) + total_wear
+            state.last_updated = datetime.utcnow()
+            
         db.commit()
 
     return len(events)
 
 
+from maintenance_module.model import EngineWearEvent
+
 # ── 5. Engine Wear Engine ─────────────────────────────────────
 def process_vehicle_engine(db: Session, vehicle_id: str, reg_no: str):
     ensure_wear_state_initialized(db, vehicle_id)
     
-    last_ts = db.execute(
-        text("SELECT MAX(ts) FROM engine_wear_events WHERE vehicle_id = :vid"),
-        {"vid": vehicle_id}
+    last_ts = db.query(func.max(EngineWearEvent.ts)).filter(
+        EngineWearEvent.vehicle_id == vehicle_id
     ).scalar()
     
+    telemetry_query = db.query(RawTelemetry).filter(RawTelemetry.vehicle_id == vehicle_id)
     if last_ts:
-        result = db.execute(
-            text("""
-                SELECT ts, rpm, coolant_temp, engine_torque, engine_load, fuel_rate, idle_time, oil_pressure, dtc_codes, trip_id
-                FROM raw_telemetry
-                WHERE vehicle_id = :vid AND ts > :last_ts
-                ORDER BY ts ASC
-            """),
-            {"vid": vehicle_id, "last_ts": last_ts}
-        )
-    else:
-        result = db.execute(
-            text("""
-                SELECT ts, rpm, coolant_temp, engine_torque, engine_load, fuel_rate, idle_time, oil_pressure, dtc_codes, trip_id
-                FROM raw_telemetry
-                WHERE vehicle_id = :vid
-                ORDER BY ts ASC
-            """),
-            {"vid": vehicle_id}
-        )
+        telemetry_query = telemetry_query.filter(RawTelemetry.ts > last_ts)
         
-    rows = result.fetchall()
+    rows = telemetry_query.order_by(RawTelemetry.ts.asc()).all()
     if not rows:
         return 0
 
@@ -634,7 +537,10 @@ def process_vehicle_engine(db: Session, vehicle_id: str, reg_no: str):
     total_wear = 0.0
 
     for row in rows:
-        ts, rpm, temp, torque, load, fuel_rate, idle_min, oil_press, dtc_codes, trip_id = row
+        ts, rpm, temp, torque, load, fuel_rate, idle_min, oil_press, dtc_codes, trip_id = (
+            row.ts, row.rpm, row.coolant_temp, row.engine_torque, row.engine_load, 
+            row.fuel_rate, row.idle_time, row.oil_pressure, row.dtc_codes, row.trip_id
+        )
         
         rpm       = int(rpm)         if rpm       is not None else 0
         temp      = float(temp)      if temp      is not None else 85.0
@@ -649,7 +555,8 @@ def process_vehicle_engine(db: Session, vehicle_id: str, reg_no: str):
 
         is_overheat = temp > 105.0
         
-        if ENGINE_AI_MODELS:
+        model = get_engine_model()
+        if model:
             # Use AI Model for inference
             # features: 'rpm', 'coolant_temp', 'engine_load', 'fuel_rate', 'idle_time'
             input_df = pd.DataFrame([{
@@ -660,9 +567,9 @@ def process_vehicle_engine(db: Session, vehicle_id: str, reg_no: str):
                 'idle_time': idle_min
             }])
             
-            event_type = ENGINE_AI_MODELS['event_classifier'].predict(input_df)[0]
-            multi = float(ENGINE_AI_MODELS['multi_regressor'].predict(input_df)[0])
-            wear_units = float(ENGINE_AI_MODELS['wear_regressor'].predict(input_df)[0])
+            event_type = model['event_classifier'].predict(input_df)[0]
+            multi = float(model['multi_regressor'].predict(input_df)[0])
+            wear_units = float(model['wear_regressor'].predict(input_df)[0])
             multi = round(multi, 2)
             wear_units = round(wear_units, 6)
         else:
@@ -687,38 +594,30 @@ def process_vehicle_engine(db: Session, vehicle_id: str, reg_no: str):
         if event_type != "normal" or len(events) % 20 == 0:
             total_wear += wear_units
             events.append({
-                "vid": vehicle_id, "trip_id": trip_id, "ts": ts,
-                "rpm": rpm, "temp": temp, "torque": torque, "load": load,
-                "fuel": fuel_rate, "idle": idle_min, "oil": oil_press,
-                "overheat": 1 if is_overheat else 0, "type": event_type,
-                "multi": multi, "wear": wear_units, "dtc": dtc_codes or ""
+                "vehicle_id": vehicle_id, "trip_id": trip_id, "ts": ts,
+                "rpm": rpm, "coolant_temp": temp, "torque_nm": torque, "engine_load": load,
+                "fuel_rate": fuel_rate, "idle_minutes": idle_min, "oil_pressure": oil_press,
+                "overheat": True if is_overheat else False, "event_type": event_type,
+                "severity_multi": multi, "wear_units": wear_units, "dtc_codes": dtc_codes or ""
             })
 
     if events:
-        db.execute(
-            text("""
-                INSERT INTO engine_wear_events (
-                    vehicle_id, trip_id, ts, rpm, coolant_temp, torque_nm,
-                    engine_load, fuel_rate, idle_minutes, oil_pressure,
-                    overheat, event_type, severity_multi, wear_units, dtc_codes
-                ) VALUES (:vid, :trip_id, :ts, :rpm, :temp, :torque, :load, :fuel, :idle, :oil, :overheat, :type, :multi, :wear, :dtc)
-            """),
-            events
-        )
+        db.bulk_insert_mappings(EngineWearEvent, events)
         
-        db.execute(
-            text("""
-                UPDATE component_wear_state
-                SET accumulated_wear = accumulated_wear + :wear,
-                    last_updated     = SYSUTCDATETIME()
-                WHERE vehicle_id = :vid AND component = 'engine'
-            """),
-            {"wear": total_wear, "vid": vehicle_id}
-        )
+        state = db.query(ComponentWearState).filter(
+            ComponentWearState.vehicle_id == vehicle_id,
+            ComponentWearState.component == 'engine'
+        ).first()
+        if state:
+            state.accumulated_wear = float(state.accumulated_wear) + total_wear
+            state.last_updated = datetime.utcnow()
+            
         db.commit()
 
     return len(events)
 
+
+from maintenance_module.model import MaintenanceAlert
 
 # ── 6. Alert Check Engine ─────────────────────────────────────
 def run_alert_check(db: Session):
@@ -727,17 +626,11 @@ def run_alert_check(db: Session):
     health < 30% -> WARNING alert
     health < 10% or RUL=0 -> CRITICAL/URGENT alert
     """
-    result = db.execute(
-        text("""
-            SELECT vehicle_id, component, rul, health_score
-            FROM component_wear_state
-        """)
-    )
-    rows = result.fetchall()
+    rows = db.query(ComponentWearState).all()
     alerts_created = 0
 
     for row in rows:
-        vid, component, rul, health = row
+        vid, component, rul, health = (row.vehicle_id, row.component, row.rul, row.health_score)
         rul    = float(rul)    if rul    is not None else 0.0
         health = float(health) if health is not None else 0.0
 
@@ -754,22 +647,26 @@ def run_alert_check(db: Session):
             continue
 
         # Check if same level alert is already open (unacknowledged)
-        already_open = db.execute(
-            text("""
-                SELECT COUNT(*) FROM maintenance_alerts
-                WHERE vehicle_id = :vid AND component = :comp AND alert_level = :lvl AND acknowledged = 0
-            """),
-            {"vid": vid, "comp": component, "lvl": level}
-        ).scalar()
+        already_open = db.query(MaintenanceAlert).filter(
+            MaintenanceAlert.vehicle_id == vid,
+            MaintenanceAlert.component == component,
+            MaintenanceAlert.alert_level == level,
+            MaintenanceAlert.acknowledged == False
+        ).count()
 
         if already_open == 0:
-            db.execute(
-                text("""
-                    INSERT INTO maintenance_alerts (id, vehicle_id, component, ts, rul_at_alert, health_at_alert, alert_level, message, acknowledged)
-                    VALUES (NEWID(), :vid, :comp, SYSUTCDATETIME(), :rul, :health, :lvl, :msg, 0)
-                """),
-                {"vid": vid, "comp": component, "rul": rul, "health": health, "lvl": level, "msg": message}
+            new_alert = MaintenanceAlert(
+                id=str(uuid.uuid4()),
+                vehicle_id=vid,
+                component=component,
+                ts=datetime.utcnow(),
+                rul_at_alert=rul,
+                health_at_alert=health,
+                alert_level=level,
+                message=message,
+                acknowledged=False
             )
+            db.add(new_alert)
             alerts_created += 1
 
     if alerts_created > 0:

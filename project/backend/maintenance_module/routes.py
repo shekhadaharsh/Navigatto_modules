@@ -20,7 +20,7 @@ from maintenance_module.schema import (
     FleetVehicle,
     TelemetryBatch
 )
-from maintenance_module.engines import (
+from maintenance_module.wear_engines import (
     ensure_wear_state_initialized,
     process_vehicle_brakes,
     process_vehicle_clutch,
@@ -33,72 +33,38 @@ from maintenance_module.engines import (
 router = APIRouter(prefix="/maintenance", tags=["Vehicle Maintenance"])
 
 
-# ── Background Task Runner ────────────────────────────────────
-def run_all_wear_engines(vehicle_id: str, reg_no: str, db_session: Session):
-    """
-    Background worker that runs all wear modules and checks for alerts.
-    """
-    try:
-        process_vehicle_brakes(db_session, vehicle_id, reg_no)
-        process_vehicle_clutch(db_session, vehicle_id, reg_no)
-        process_vehicle_tires(db_session, vehicle_id, reg_no)
-        process_vehicle_battery(db_session, vehicle_id, reg_no)
-        process_vehicle_engine(db_session, vehicle_id, reg_no)
-        run_alert_check(db_session)
-    except Exception as e:
-        print(f"Error executing wear engines for vehicle {reg_no}: {e}")
-    finally:
-        db_session.close()
-
+from maintenance_module.tasks import process_vehicle_wear_task
 
 # ── 1. Telemetry Ingestion Endpoint ───────────────────────────
+from driver_module.model import Vehicle
+from maintenance_module.model import RawTelemetry
+
 @router.post("/telemetry")
-def receive_telemetry(batch: TelemetryBatch, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def receive_telemetry(batch: TelemetryBatch, db: Session = Depends(get_db)):
     """
     Stream raw telemetry packets from FMC650 OBD / CAN.
-    Appends to raw_telemetry and schedules background wear checks.
+    Appends to raw_telemetry and schedules background wear checks using Celery.
     """
     if not batch.rows:
         raise HTTPException(status_code=400, detail="Empty telemetry batch")
 
-    sql = """
-        INSERT INTO raw_telemetry (
-            vehicle_id, trip_id, ts, speed, rpm, engine_load, coolant_temp,
-            fuel_rate, fuel_used, fuel_level, oil_pressure, engine_torque,
-            engine_hours, idle_time, brake_pedal, gvw, odometer, dtc_codes,
-            accel_x, accel_y, accel_z, gps_slope, latitude, longitude,
-            battery_voltage, ignition, harsh_brake, harsh_accel,
-            harsh_corner, overspeeding
-        ) VALUES (
-            :vehicle_id, :trip_id, :ts, :speed, :rpm, :engine_load, :coolant_temp,
-            :fuel_rate, :fuel_used, :fuel_level, :oil_pressure, :engine_torque,
-            :engine_hours, :idle_time, :brake_pedal, :gvw, :odometer, :dtc_codes,
-            :accel_x, :accel_y, :accel_z, :gps_slope, :latitude, :longitude,
-            :battery_voltage, :ignition, :harsh_brake, :harsh_accel,
-            :harsh_corner, :overspeeding
-        )
-    """
-    
     params = [r.dict() for r in batch.rows]
     
     try:
-        db.execute(text(sql), params)
+        db.bulk_insert_mappings(RawTelemetry, params)
         db.commit()
 
         # Extract unique vehicle IDs from this batch
         vehicle_ids = list({r.vehicle_id for r in batch.rows})
 
-        # Run background calculations using a dedicated session clone
-        from database.db import SessionLocal
+        # Run background calculations using Celery queue
         for vid in vehicle_ids:
-            reg_no = db.execute(
-                text("SELECT reg_no FROM vehicles WHERE id = :vid"),
-                {"vid": vid}
-            ).scalar()
+            v = db.query(Vehicle).filter(Vehicle.id == vid).first()
+            reg_no = v.reg_no if v else None
             
             if reg_no:
-                bg_session = SessionLocal()
-                background_tasks.add_task(run_all_wear_engines, vid, reg_no, bg_session)
+                # Send task to Redis queue
+                process_vehicle_wear_task.delay(vid, reg_no)
 
         return {
             "status": "accepted",
@@ -111,46 +77,37 @@ def receive_telemetry(batch: TelemetryBatch, background_tasks: BackgroundTasks, 
         raise HTTPException(status_code=500, detail=f"Database ingestion failure: {e}")
 
 
+from maintenance_module.model import ComponentWearState
+
 # ── 2. Full Component Health Dashboard ────────────────────────
 @router.get("/health/{vehicle_id}", response_model=VehicleHealthResponse)
 def get_vehicle_health(vehicle_id: str, db: Session = Depends(get_db)):
     """
     Returns full predictive health and RUL dashboard for a vehicle.
     """
-    vrow = db.execute(
-        text("SELECT reg_no, make, model FROM vehicles WHERE id = :vid"),
-        {"vid": vehicle_id}
-    ).fetchone()
+    from driver_module.model import Vehicle
+    v = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
 
-    if not vrow:
+    if not v:
         raise HTTPException(status_code=404, detail="Vehicle not found")
 
     # Run the engines dynamically to calculate wear based on existing raw telemetry
     try:
         ensure_wear_state_initialized(db, vehicle_id)
-        process_vehicle_brakes(db, vehicle_id, vrow[0])
-        process_vehicle_clutch(db, vehicle_id, vrow[0])
-        process_vehicle_tires(db, vehicle_id, vrow[0])
-        process_vehicle_battery(db, vehicle_id, vrow[0])
-        process_vehicle_engine(db, vehicle_id, vrow[0])
+        process_vehicle_brakes(db, vehicle_id, v.reg_no)
+        process_vehicle_clutch(db, vehicle_id, v.reg_no)
+        process_vehicle_tires(db, vehicle_id, v.reg_no)
+        process_vehicle_battery(db, vehicle_id, v.reg_no)
+        process_vehicle_engine(db, vehicle_id, v.reg_no)
         run_alert_check(db)
     except Exception as e:
-        print(f"Error executing wear engines dynamically for vehicle {vrow[0]}: {e}")
+        print(f"Error executing wear engines dynamically for vehicle {v.reg_no}: {e}")
 
-    components_res = db.execute(
-        text("""
-            SELECT component, accumulated_wear, base_life, rul, health_score, last_updated
-            FROM component_wear_state
-            WHERE vehicle_id = :vid
-            ORDER BY health_score ASC
-        """),
-        {"vid": vehicle_id}
-    ).fetchall()
+    components_res = db.query(ComponentWearState).filter(ComponentWearState.vehicle_id == vehicle_id).order_by(ComponentWearState.health_score.asc()).all()
 
     components = []
     for c in components_res:
-        comp, acc, base, rul, health, updated = c
-        health_val = float(health) if health is not None else 100.0
+        health_val = float(c.health_score) if c.health_score is not None else 100.0
         
         status = "ok"
         if health_val < 10.0:
@@ -160,21 +117,21 @@ def get_vehicle_health(vehicle_id: str, db: Session = Depends(get_db)):
 
         components.append(
             ComponentHealth(
-                component=comp,
-                accumulated_wear=float(acc),
-                base_life=float(base),
-                rul=float(rul) if rul is not None else float(base),
+                component=c.component,
+                accumulated_wear=float(c.accumulated_wear),
+                base_life=float(c.base_life),
+                rul=float(c.rul) if c.rul is not None else float(c.base_life),
                 health_score=health_val,
                 status=status,
-                last_updated=str(updated) if updated else None
+                last_updated=str(c.last_updated) if c.last_updated else None
             )
         )
 
     return VehicleHealthResponse(
         vehicle_id=vehicle_id,
-        reg_no=vrow[0],
-        make=vrow[1],
-        model=vrow[2],
+        reg_no=v.reg_no,
+        make=v.make,
+        model=v.model,
         components=components
     )
 
@@ -185,16 +142,13 @@ def get_lightweight_rul(vehicle_id: str, db: Session = Depends(get_db)):
     """
     Fast lightweight endpoint returning RUL dictionary.
     """
-    res = db.execute(
-        text("SELECT component, rul, health_score FROM component_wear_state WHERE vehicle_id = :vid"),
-        {"vid": vehicle_id}
-    ).fetchall()
+    res = db.query(ComponentWearState).filter(ComponentWearState.vehicle_id == vehicle_id).all()
 
     if not res:
         raise HTTPException(status_code=404, detail="No component wear data available")
 
     rul_dict = {
-        r[0]: {"rul": float(r[1]) if r[1] is not None else 0.0, "health_score": float(r[2]) if r[2] is not None else 100.0}
+        r.component: {"rul": float(r.rul) if r.rul is not None else 0.0, "health_score": float(r.health_score) if r.health_score is not None else 100.0}
         for r in res
     }
 
@@ -211,39 +165,41 @@ def get_maintenance_alerts(vehicle_id: Optional[str] = None, level: Optional[str
     Fetch active unacknowledged predictive maintenance warnings.
     Supports optional filtering by vehicle or severity level.
     """
-    query = """
-        SELECT ma.id, v.reg_no, v.make, ma.component,
-               ma.alert_level, ma.rul_at_alert,
-               ma.health_at_alert, ma.message, ma.ts
-        FROM maintenance_alerts ma
-        JOIN vehicles v ON v.id = ma.vehicle_id
-        WHERE ma.acknowledged = 0
-    """
-    params = {}
+    from driver_module.model import Vehicle
+    from maintenance_module.model import MaintenanceAlert
+    
+    q = db.query(MaintenanceAlert, Vehicle).join(Vehicle, MaintenanceAlert.vehicle_id == Vehicle.id).filter(MaintenanceAlert.acknowledged == False)
+    
     if vehicle_id:
-        query += " AND ma.vehicle_id = :vid"
-        params["vid"] = vehicle_id
+        q = q.filter(MaintenanceAlert.vehicle_id == vehicle_id)
     if level:
-        query += " AND ma.alert_level = :lvl"
-        params["lvl"] = level
+        q = q.filter(MaintenanceAlert.alert_level == level)
         
-    query += " ORDER BY CASE ma.alert_level WHEN 'urgent' THEN 1 WHEN 'critical' THEN 2 ELSE 3 END, ma.ts DESC"
+    from sqlalchemy import case
+    q = q.order_by(
+        case(
+            (MaintenanceAlert.alert_level == 'urgent', 1),
+            (MaintenanceAlert.alert_level == 'critical', 2),
+            else_=3
+        ),
+        MaintenanceAlert.ts.desc()
+    )
 
-    res = db.execute(text(query), params).fetchall()
+    res = q.all()
 
     alerts = []
-    for r in res:
+    for ma, v in res:
         alerts.append(
             AlertResponse(
-                id=str(r[0]),
-                reg_no=r[1],
-                make=r[2],
-                component=r[3],
-                level=r[4],
-                rul=float(r[5]) if r[5] is not None else 0.0,
-                health=float(r[6]) if r[6] is not None else 100.0,
-                message=r[7],
-                ts=str(r[8])
+                id=str(ma.id),
+                reg_no=v.reg_no,
+                make=v.make,
+                component=ma.component,
+                level=ma.alert_level,
+                rul=float(ma.rul_at_alert) if ma.rul_at_alert is not None else 0.0,
+                health=float(ma.health_at_alert) if ma.health_at_alert is not None else 100.0,
+                message=ma.message,
+                ts=str(ma.ts)
             )
         )
 
@@ -253,6 +209,9 @@ def get_maintenance_alerts(vehicle_id: Optional[str] = None, level: Optional[str
     )
 
 
+from datetime import datetime
+from maintenance_module.model import MaintenanceAlert
+
 # ── 5. Acknowledge Alert ──────────────────────────────────────
 @router.post("/alerts/{alert_id}/ack")
 def acknowledge_alert(alert_id: str, db: Session = Depends(get_db)):
@@ -260,43 +219,23 @@ def acknowledge_alert(alert_id: str, db: Session = Depends(get_db)):
     Acknowledge a predictive warning, marking it as resolved in the dashboard
     and resetting the corresponding component's wear to 0.0 (restoring health to 100%).
     """
-    # Fetch alert details to know which vehicle and component it belongs to
-    alert_info = db.execute(
-        text("SELECT vehicle_id, component FROM maintenance_alerts WHERE id = :alert_id"),
-        {"alert_id": alert_id}
-    ).fetchone()
-
-    if not alert_info:
+    alert = db.query(MaintenanceAlert).filter(MaintenanceAlert.id == alert_id).first()
+    if not alert:
         raise HTTPException(status_code=404, detail="Alert not found")
-
-    vehicle_id, component = alert_info[0], alert_info[1]
-
-    # Update alert as acknowledged
-    res = db.execute(
-        text("""
-            UPDATE maintenance_alerts
-            SET acknowledged = 1, ack_at = SYSUTCDATETIME()
-            WHERE id = :alert_id
-        """),
-        {"alert_id": alert_id}
-    )
     
-    if res.rowcount == 0:
+    if alert.acknowledged:
         raise HTTPException(status_code=404, detail="Alert already acknowledged")
 
-    # Reset accumulated wear to 0.0 for that specific component & vehicle to restore health score to 100%
-    db.execute(
-        text("""
-            UPDATE component_wear_state
-            SET accumulated_wear = 0.0,
-                last_updated = SYSUTCDATETIME()
-            WHERE vehicle_id = :vid AND component = :comp
-        """),
-        {"vid": vehicle_id, "comp": component}
-    )
+    alert.acknowledged = True
+    alert.ack_at = datetime.utcnow()
+
+    db.query(ComponentWearState).filter(
+        ComponentWearState.vehicle_id == alert.vehicle_id,
+        ComponentWearState.component == alert.component
+    ).update({"accumulated_wear": 0.0, "last_updated": datetime.utcnow()})
 
     db.commit()
-    return {"status": "acknowledged", "alert_id": alert_id, "component": component}
+    return {"status": "acknowledged", "alert_id": alert_id, "component": alert.component}
 
 
 # ── 6. Resolve Component Wear ─────────────────────────────────
@@ -305,29 +244,19 @@ def resolve_component_wear(vehicle_id: str, component: str, db: Session = Depend
     """
     Manually resolve all issues for a specific component, resetting its wear to 0.
     """
-    # Reset accumulated wear to 0.0 for that specific component & vehicle to restore health score to 100%
-    res = db.execute(
-        text("""
-            UPDATE component_wear_state
-            SET accumulated_wear = 0.0,
-                last_updated = SYSUTCDATETIME()
-            WHERE vehicle_id = :vid AND component = :comp
-        """),
-        {"vid": vehicle_id, "comp": component}
-    )
+    res = db.query(ComponentWearState).filter(
+        ComponentWearState.vehicle_id == vehicle_id,
+        ComponentWearState.component == component
+    ).update({"accumulated_wear": 0.0, "last_updated": datetime.utcnow()})
     
-    if res.rowcount == 0:
+    if res == 0:
         raise HTTPException(status_code=404, detail="Component wear state not found")
 
-    # Acknowledge any open alerts for this component
-    db.execute(
-        text("""
-            UPDATE maintenance_alerts
-            SET acknowledged = 1, ack_at = SYSUTCDATETIME()
-            WHERE vehicle_id = :vid AND component = :comp AND acknowledged = 0
-        """),
-        {"vid": vehicle_id, "comp": component}
-    )
+    db.query(MaintenanceAlert).filter(
+        MaintenanceAlert.vehicle_id == vehicle_id,
+        MaintenanceAlert.component == component,
+        MaintenanceAlert.acknowledged == False
+    ).update({"acknowledged": True, "ack_at": datetime.utcnow()})
 
     db.commit()
     return {"status": "resolved", "vehicle_id": vehicle_id, "component": component}
