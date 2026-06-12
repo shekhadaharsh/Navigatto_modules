@@ -24,7 +24,7 @@ if DB_TYPE.lower() == "sqlite":
     for table_name, table in Base.metadata.tables.items():
         table.schema = None
 
-Base.metadata.create_all(bind=engine)
+# Base.metadata.create_all(bind=engine)
 
 import os
 import asyncio

@@ -33,8 +33,11 @@ class Vehicle(Base):
     __table_args__ = {"schema": "dbo"}
 
     id           = Column(String, primary_key=True) # uniqueidentifier stored as string
+    reg_no       = Column(String)
     vehicle_name = Column(String)
     vehicle_type = Column(String)
+    make         = Column(String)
+    model        = Column(String)
     is_active    = Column(Boolean)
 
     # Relationships
