@@ -1748,20 +1748,6 @@ export default function App() {
 
                                       {/* Side-by-side Score blocks */}
                                       <div className="grid grid-cols-2 gap-4 mb-4 shrink-0">
-                                        {/* Rule-Based Block */}
-                                        <div className="bg-slate-50/70 rounded-2xl p-3 border border-slate-200/40 relative overflow-hidden">
-                                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mb-1">📐 Rule-Based</span>
-                                          <div className="flex items-baseline gap-1.5">
-                                            <span className="text-2xl font-black font-outfit text-slate-700">
-                                              {journeyDetails.driver_score.score_comparison.rule_based.final_score}
-                                            </span>
-                                            <span className="text-[10px] text-slate-400 font-bold">/100</span>
-                                          </div>
-                                          <span className="text-[9.5px] font-bold text-slate-400 italic">
-                                            {journeyDetails.driver_score.score_comparison.rule_based.risk_level}
-                                          </span>
-                                        </div>
-
                                         {/* ML Model Block */}
                                         <div className="bg-violet-50/20 rounded-2xl p-3 border border-violet-100 relative overflow-hidden">
                                           <span className="text-[9px] text-violet-600 font-bold uppercase tracking-wider block mb-1">🤖 ML XGBoost</span>
@@ -1773,6 +1759,20 @@ export default function App() {
                                           </div>
                                           <span className="text-[9.5px] font-bold text-violet-500 italic animate-pulse">
                                             {journeyDetails.driver_score.score_comparison.ml.risk_level}
+                                          </span>
+                                        </div>
+
+                                        {/* Rule-Based Block */}
+                                        <div className="bg-slate-50/70 rounded-2xl p-3 border border-slate-200/40 relative overflow-hidden">
+                                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mb-1">📐 Rule-Based</span>
+                                          <div className="flex items-baseline gap-1.5">
+                                            <span className="text-2xl font-black font-outfit text-slate-700">
+                                              {journeyDetails.driver_score.score_comparison.rule_based.final_score}
+                                            </span>
+                                            <span className="text-[10px] text-slate-400 font-bold">/100</span>
+                                          </div>
+                                          <span className="text-[9.5px] font-bold text-slate-400 italic">
+                                            {journeyDetails.driver_score.score_comparison.rule_based.risk_level}
                                           </span>
                                         </div>
                                       </div>
