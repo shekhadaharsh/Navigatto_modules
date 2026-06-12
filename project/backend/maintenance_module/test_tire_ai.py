@@ -8,7 +8,7 @@ def test_tire_ai():
     print("========================================\n")
 
     # Load the trained model
-    model_path = os.path.join(os.path.dirname(__file__), 'tire_wear_model.pkl')
+    model_path = os.path.join(os.path.dirname(__file__), 'models', 'tire_wear_model.pkl')
     try:
         models = joblib.load(model_path)
         print("[OK] AI Model successfully loaded from disk!\n")

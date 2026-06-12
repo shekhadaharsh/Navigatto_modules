@@ -22,7 +22,7 @@ def get_engine_model():
     global _ENGINE_AI_MODELS
     if _ENGINE_AI_MODELS is None:
         try:
-            path = os.path.join(os.path.dirname(__file__), 'engine_wear_model.pkl')
+            path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'engine_wear_model.pkl')
             _ENGINE_AI_MODELS = joblib.load(path)
         except Exception as e:
             logging.warning(f"Could not load AI model for engine wear: {e}")
@@ -32,7 +32,7 @@ def get_brake_model():
     global _BRAKE_AI_MODELS
     if _BRAKE_AI_MODELS is None:
         try:
-            path = os.path.join(os.path.dirname(__file__), 'brake_wear_model.pkl')
+            path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'brake_wear_model.pkl')
             _BRAKE_AI_MODELS = joblib.load(path)
         except Exception as e:
             logging.warning(f"Could not load AI model for brake wear: {e}")
@@ -42,7 +42,7 @@ def get_tire_model():
     global _TIRE_AI_MODELS
     if _TIRE_AI_MODELS is None:
         try:
-            path = os.path.join(os.path.dirname(__file__), 'tire_wear_model.pkl')
+            path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'models', 'tire_wear_model.pkl')
             _TIRE_AI_MODELS = joblib.load(path)
         except Exception as e:
             logging.warning(f"Could not load AI model for tire wear: {e}")

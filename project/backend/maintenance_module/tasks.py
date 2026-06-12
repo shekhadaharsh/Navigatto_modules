@@ -7,6 +7,7 @@ def process_vehicle_wear_task(vehicle_id: str, reg_no: str):
     Background worker that runs all wear modules and checks for alerts asynchronously.
     """
     from database.db import SessionLocal
+    import driver_module.model  # Fix: Ensure Vehicle model is loaded for SQLAlchemy relationships
     from maintenance_module.wear_engines import (
         process_vehicle_brakes,
         process_vehicle_clutch,
