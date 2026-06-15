@@ -1,4 +1,5 @@
 import ReplayControl from './ReplayControl';
+import DeviceSimulator from './DeviceSimulator';
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -505,6 +506,7 @@ export default function App() {
   const [mobileViewTab, setMobileViewTab] = useState('drivers');
   const [isScoreCardFlipped, setIsScoreCardFlipped] = useState(false);
   const [isMaintCardFlipped, setIsMaintCardFlipped] = useState(false);
+  const [isSimDialogOpen, setIsSimDialogOpen] = useState(false);
 
   // --- LOADERS / CONTROL ---
   const [searchTerm, setSearchTerm] = useState('');
@@ -529,6 +531,8 @@ export default function App() {
   const [showAlertToast, setShowAlertToast] = useState(false);
   const dismissedToastIdsRef = useRef(new Set());
   const isControllerRef = useRef(localStorage.getItem("is_replay_controller") === "true");
+
+
 
   useEffect(() => {
     const handleStop = (e) => {
@@ -1181,6 +1185,18 @@ export default function App() {
           >
             <Truck className="w-3.5 h-3.5" />
             <span>Vehicles Status</span>
+          </button>
+          
+          {/* Device Simulator Button */}
+          <button
+            onClick={() => {
+              setIsSimDialogOpen(true);
+            }}
+            className="flex items-center gap-2 px-3.5 py-2 bg-violet-600 hover:bg-violet-700 active:scale-95 text-white text-xs font-bold font-outfit rounded-xl transition-all cursor-pointer shadow-premium-sm border-0 outline-none hover:shadow-md hover:scale-[1.02]"
+            title="Open IoT Device Simulator Panel"
+          >
+            <Activity className="w-3.5 h-3.5 animate-pulse" />
+            <span>Device & Data Simulator</span>
           </button>
 
           <ReplayControl />
@@ -2586,6 +2602,22 @@ export default function App() {
                   </div>
                 </div>
               )}
+
+              {/* -------------------- DEVICE TELEMETRY SIMULATOR MODAL -------------------- */}
+              {/* -------------------- DEVICE TELEMETRY SIMULATOR MODAL -------------------- */}
+              <DeviceSimulator
+                isOpen={isSimDialogOpen}
+                onClose={() => setIsSimDialogOpen(false)}
+                drivers={drivers}
+                setDrivers={setDrivers}
+                activeDriverId={activeDriverId}
+                setActiveDriverId={setActiveDriverId}
+                setJourneys={setJourneys}
+                setActiveJourneyId={setActiveJourneyId}
+                setFuelAlerts={setFuelAlerts}
+                setShowAlertToast={setShowAlertToast}
+                isUsingMock={isUsingMock}
+              />
             </>
           )}
 
