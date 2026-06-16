@@ -29,10 +29,10 @@ ROUTE_TYPE_MAP = {
 }
 
 VEHICLE_TYPE_MAP = {
-    "Heavy Cargo Truck":   0,
-    "Medium Cargo Truck":  1,   
-    "Mini Truck":          2,
-    "Pickup Truck":        3,
+    "Heavy Cargo Truck": 0,
+    "Medium Cargo":      1,   # matches DB value in seed.py and frontend
+    "Mini Truck":        2,
+    "Pickup Truck":      3,
 }
 
 # ── Load model once at import time ──

@@ -1,4 +1,6 @@
 import ReplayControl from './ReplayControl';
+import DeviceSimulator from './DeviceSimulator';
+import Chatbot from './components/Chatbot/Chatbot';
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -87,6 +89,8 @@ function TheftLocationMap({ lat, lng }) {
       <div style={{ fontSize: "11px", color: "#64748b", padding: "4px 8px", background: "#f8fafc", borderTop: "1px solid #e2e8f0" }}>
         📍 {lat.toFixed(5)}, {lng.toFixed(5)}
       </div>
+
+      <Chatbot />
     </div>
   );
 }
@@ -505,6 +509,7 @@ export default function App() {
   const [mobileViewTab, setMobileViewTab] = useState('drivers');
   const [isScoreCardFlipped, setIsScoreCardFlipped] = useState(false);
   const [isMaintCardFlipped, setIsMaintCardFlipped] = useState(false);
+  const [isSimDialogOpen, setIsSimDialogOpen] = useState(false);
 
   // --- LOADERS / CONTROL ---
   const [searchTerm, setSearchTerm] = useState('');
@@ -530,6 +535,8 @@ export default function App() {
   const dismissedToastIdsRef = useRef(new Set());
   const isReplayRunningRef = useRef(false);
   const globalMuteRef = useRef(false);
+
+
 
   useEffect(() => {
     const handleStop = (e) => {
@@ -605,7 +612,8 @@ export default function App() {
               name: d.driver_name || fallbackName,
               avatar_color: getDriverColor(d.driver_id),
               vehicle_type: d.vehicle_type || fallbackVehicleType,
-              vehicle_id: d.vehicle_id || fallbackVehicleId
+              vehicle_id: d.vehicle_id || fallbackVehicleId,
+              total_distance_km: d.total_distance_km ?? d.total_distance ?? 0.0
             };
           });
 
@@ -644,23 +652,32 @@ export default function App() {
     const fetchJourneys = async () => {
       setIsLoadingJourneys(true);
       setJourneyDetails(null);
+      // ── Clear immediately so stale journeys never show for a different driver ──
+      setJourneys([]);
+      setActiveJourneyId(null);
 
       if (isUsingMock) {
         // Mock execution
         setTimeout(() => {
           const list = generateMockJourneys(activeDriverId);
           setJourneys(list);
-          setActiveJourneyId(prev => {
-            if (prev && list.some(t => t.journey_id === prev)) return prev;
-            return list.length > 0 ? list[0].journey_id : null;
-          });
+          setActiveJourneyId(list.length > 0 ? list[0].journey_id : null);
           setIsLoadingJourneys(false);
         }, 300);
       } else {
         try {
           // Maps to GET /drivers/{driver_id}/trips on FastAPI
           const res = await fetch(`/api/drivers/${activeDriverId}/trips`);
-          if (!res.ok) throw new Error('Network error');
+
+          // 404 = new driver with no trips yet — show empty list, not an error
+          if (res.status === 404) {
+            setJourneys([]);
+            setActiveJourneyId(null);
+            return;
+          }
+
+          if (!res.ok) throw new Error(`API error: ${res.status}`);
+
           const list = await res.json();
           // Normalize: backend returns trip_id, frontend uses journey_id
           const normalized = list.map(t => ({
@@ -674,12 +691,12 @@ export default function App() {
             maintenance_critical: false,
           }));
           setJourneys(normalized);
-          setActiveJourneyId(prev => {
-            if (prev && normalized.some(t => t.journey_id === prev)) return prev;
-            return normalized.length > 0 ? normalized[0].journey_id : null;
-          });
+          setActiveJourneyId(normalized.length > 0 ? normalized[0].journey_id : null);
         } catch (err) {
           console.error("Error loading journeys", err);
+          // Always clear stale state on error
+          setJourneys([]);
+          setActiveJourneyId(null);
         } finally {
           setIsLoadingJourneys(false);
         }
@@ -893,15 +910,16 @@ export default function App() {
             { component: "brake", accumulated_wear: 14500.2, base_life: 20000.0, rul: 5499.8, health_score: 27.5, status: "warning", last_updated: "2026-05-21 12:45" },
             { component: "tire", accumulated_wear: 48900.0, base_life: 120000.0, rul: 71100.0, health_score: 59.3, status: "ok", last_updated: "2026-05-21 12:45" },
             { component: "battery", accumulated_wear: 350.0, base_life: 5000.0, rul: 4650.0, health_score: 93.0, status: "ok", last_updated: "2026-05-21 12:45" },
-            { component: "engine", accumulated_wear: 12200.4, base_life: 50000.0, rul: 37799.6, health_score: 75.6, status: "ok", last_updated: "2026-05-21 12:45" }
+            { component: "engine", accumulated_wear: 45750.0, base_life: 50000.0, rul: 4250.0, health_score: 8.5, status: "critical", last_updated: "2026-05-21 12:45" }
           ]
         });
         setMaintFleetSummary({
-          open_alerts: 2,
+          open_alerts: 5,
           fleet: [
-            { vehicle_id: "VH001", reg_no: "GJ-01-AA-1234", make: "Tata", model: "Signa", critical_count: 0, warning_count: 1, min_health: 27.5, overall_status: "warning" },
-            { vehicle_id: "VH002", reg_no: "MH-02-BB-5678", make: "Ashok Leyland", model: "Dost", critical_count: 0, warning_count: 0, min_health: 93.0, overall_status: "ok" },
-            { vehicle_id: "VH003", reg_no: "KA-03-CC-9012", make: "BharatBenz", model: "1914R", critical_count: 0, warning_count: 1, min_health: 27.5, overall_status: "warning" }
+            { vehicle_id: "VH001", reg_no: "GJ-01-AA-1234", make: "Tata", model: "Signa", critical_count: 1, warning_count: 1, min_health: 8.5, overall_status: "critical" },
+            { vehicle_id: "VH002", reg_no: "MH-02-BB-5678", make: "Ashok Leyland", model: "Dost", critical_count: 1, warning_count: 1, min_health: 8.0, overall_status: "critical" },
+            { vehicle_id: "VH003", reg_no: "KA-03-CC-9012", make: "BharatBenz", model: "1914R", critical_count: 0, warning_count: 1, min_health: 25.0, overall_status: "warning" },
+            { vehicle_id: "VH004", reg_no: "DL-04-DD-3456", make: "Tata", model: "LPT", critical_count: 0, warning_count: 0, min_health: 85.0, overall_status: "ok" }
           ]
         });
         setIsLoadingMaintHealth(false);
@@ -988,6 +1006,46 @@ export default function App() {
         }
       } catch (err) {
         console.error("Failed to acknowledge alert", err);
+      }
+    }
+  };
+
+  const handleResolveComponent = async (componentName, vehicleId) => {
+    if (isUsingMock) {
+      setMaintHealthData(prev => {
+        if (!prev || !prev.components) return prev;
+        return {
+          ...prev,
+          components: prev.components.map(c => {
+            if (c.component === componentName) {
+              return { ...c, health_score: 100.0, rul: c.base_life || 50000.0, accumulated_wear: 0.0, status: "ok" };
+            }
+            return c;
+          })
+        };
+      });
+      setJourneyDetails(prev => {
+        if (!prev) return prev;
+        let updatedHealthScores = { ...(prev.maintenance.health_scores || { brake: 100, tire: 100, battery: 100, engine: 100 }) };
+        updatedHealthScores[componentName] = 100;
+        return {
+          ...prev,
+          maintenance: {
+            ...prev.maintenance,
+            health_scores: updatedHealthScores
+          }
+        };
+      });
+    } else {
+      try {
+        const res = await fetch(`/api/maintenance/components/${vehicleId}/${componentName}/resolve`, { method: 'POST' });
+        if (res.ok) {
+          if (maintVehicleId) {
+            openMaintenanceDashboard(maintVehicleId);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to resolve component", err);
       }
     }
   };
@@ -1140,6 +1198,18 @@ export default function App() {
             <Truck className="w-3.5 h-3.5" />
             <span>Vehicles Status</span>
           </button>
+          
+          {/* Device Simulator Button */}
+          <button
+            onClick={() => {
+              setIsSimDialogOpen(true);
+            }}
+            className="flex items-center gap-2 px-3.5 py-2 bg-violet-600 hover:bg-violet-700 active:scale-95 text-white text-xs font-bold font-outfit rounded-xl transition-all cursor-pointer shadow-premium-sm border-0 outline-none hover:shadow-md hover:scale-[1.02]"
+            title="Open IoT Device Simulator Panel"
+          >
+            <Activity className="w-3.5 h-3.5 animate-pulse" />
+            <span>Device & Data Simulator</span>
+          </button>
 
           <ReplayControl />
           <div className="w-9 h-9 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 hover:text-brand-500 transition-colors cursor-pointer">
@@ -1229,15 +1299,19 @@ export default function App() {
                             </span>
                           )}
                         </span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 ${getScoreColorClass(d.avg_score)}`}>
-                          {d.avg_score}
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 ${
+                          d.total_trips === 0
+                            ? 'bg-slate-100 text-slate-400'
+                            : getScoreColorClass(d.avg_score)
+                        }`}>
+                          {d.total_trips === 0 ? '—' : d.avg_score}
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-[11px] font-medium text-slate-400">
-                        <span className="truncate flex items-center gap-1">
-                          <Truck className="w-3.5 h-3.5 shrink-0 text-slate-300" /> {d.vehicle_type}
+                        <span className="truncate flex items-center gap-1 text-slate-400 font-semibold bg-slate-100/80 px-1.5 py-0.5 rounded">
+                          ID: {d.driver_id}
                         </span>
-                        <span>{d.total_trips} trips</span>
+                        <span>{d.total_trips} trip{d.total_trips !== 1 ? 's' : ''}</span>
                       </div>
                     </div>
                   </button>
@@ -1342,7 +1416,19 @@ export default function App() {
                       <span className="text-xs text-slate-400 font-medium">Retrieving journeys...</span>
                     </div>
                   ) : filteredJourneys.length === 0 ? (
-                    <div className="text-center p-6 text-xs text-slate-400 font-medium">No matching journeys found.</div>
+                    journeys.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
+                        <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center">
+                          <Navigation className="w-5 h-5 text-slate-300" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500">No trips yet</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">Use the Simulator to inject a trip for this driver.</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center p-6 text-xs text-slate-400 font-medium">No matching journeys found.</div>
+                    )
                   ) : (
                     filteredJourneys.map(j => {
                       const isActive = j.journey_id === activeJourneyId;
@@ -1452,6 +1538,15 @@ export default function App() {
                           <span className="font-bold text-slate-700">{journeyDetails.journey.end_time.split(' ')[1]}</span>
                           <span className="w-1 h-1 rounded-full bg-slate-300"></span>
                           <span className="text-slate-500 font-semibold uppercase">{journeyDetails.journey.route_type} route</span>
+                          {journeyDetails.journey.vehicle_type && (
+                            <>
+                              <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                              <span className="flex items-center gap-1 font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                                <Truck className="w-3.5 h-3.5 text-brand-500" />
+                                {journeyDetails.journey.vehicle_type} ({journeyDetails.journey.vehicle_id})
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
 
@@ -1706,20 +1801,6 @@ export default function App() {
 
                                       {/* Side-by-side Score blocks */}
                                       <div className="grid grid-cols-2 gap-4 mb-4 shrink-0">
-                                        {/* Rule-Based Block */}
-                                        <div className="bg-slate-50/70 rounded-2xl p-3 border border-slate-200/40 relative overflow-hidden">
-                                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mb-1">📐 Rule-Based</span>
-                                          <div className="flex items-baseline gap-1.5">
-                                            <span className="text-2xl font-black font-outfit text-slate-700">
-                                              {journeyDetails.driver_score.score_comparison.rule_based.final_score}
-                                            </span>
-                                            <span className="text-[10px] text-slate-400 font-bold">/100</span>
-                                          </div>
-                                          <span className="text-[9.5px] font-bold text-slate-400 italic">
-                                            {journeyDetails.driver_score.score_comparison.rule_based.risk_level}
-                                          </span>
-                                        </div>
-
                                         {/* ML Model Block */}
                                         <div className="bg-violet-50/20 rounded-2xl p-3 border border-violet-100 relative overflow-hidden">
                                           <span className="text-[9px] text-violet-600 font-bold uppercase tracking-wider block mb-1">🤖 ML XGBoost</span>
@@ -1731,6 +1812,20 @@ export default function App() {
                                           </div>
                                           <span className="text-[9.5px] font-bold text-violet-500 italic animate-pulse">
                                             {journeyDetails.driver_score.score_comparison.ml.risk_level}
+                                          </span>
+                                        </div>
+
+                                        {/* Rule-Based Block */}
+                                        <div className="bg-slate-50/70 rounded-2xl p-3 border border-slate-200/40 relative overflow-hidden">
+                                          <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block mb-1">📐 Rule-Based</span>
+                                          <div className="flex items-baseline gap-1.5">
+                                            <span className="text-2xl font-black font-outfit text-slate-700">
+                                              {journeyDetails.driver_score.score_comparison.rule_based.final_score}
+                                            </span>
+                                            <span className="text-[10px] text-slate-400 font-bold">/100</span>
+                                          </div>
+                                          <span className="text-[9.5px] font-bold text-slate-400 italic">
+                                            {journeyDetails.driver_score.score_comparison.rule_based.risk_level}
                                           </span>
                                         </div>
                                       </div>
@@ -2319,12 +2414,25 @@ export default function App() {
                                           <span className="text-[10px] text-slate-400 font-bold uppercase">Physics wear engine</span>
                                         </div>
                                       </div>
-                                      <span className={`text-[9px] px-2 py-0.5 rounded-full font-black border uppercase tracking-wider ${isCrit ? 'bg-rose-50 text-rose-700 border-rose-200' :
-                                          isWarn ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                                            'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                        }`}>
-                                        {c.status}
-                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        {healthScoreVal < 100.0 && (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleResolveComponent(c.component, maintHealthData.vehicle_id);
+                                            }}
+                                            className="text-[9px] font-bold bg-white/80 hover:bg-white text-slate-700 px-2 py-0.5 rounded border border-slate-200 shadow-sm transition-all cursor-pointer select-none active:scale-95"
+                                          >
+                                            Resolve
+                                          </button>
+                                        )}
+                                        <span className={`text-[9px] px-2 py-0.5 rounded-full font-black border uppercase tracking-wider ${isCrit ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                            isWarn ? 'bg-amber-50 text-amber-700 border-amber-200' :
+                                              'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                          }`}>
+                                          {c.status}
+                                        </span>
+                                      </div>
                                     </div>
 
                                     {/* Circular radial indicator and details */}
@@ -2531,6 +2639,22 @@ export default function App() {
                   </div>
                 </div>
               )}
+
+              {/* -------------------- DEVICE TELEMETRY SIMULATOR MODAL -------------------- */}
+              {/* -------------------- DEVICE TELEMETRY SIMULATOR MODAL -------------------- */}
+              <DeviceSimulator
+                isOpen={isSimDialogOpen}
+                onClose={() => setIsSimDialogOpen(false)}
+                drivers={drivers}
+                setDrivers={setDrivers}
+                activeDriverId={activeDriverId}
+                setActiveDriverId={setActiveDriverId}
+                setJourneys={setJourneys}
+                setActiveJourneyId={setActiveJourneyId}
+                setFuelAlerts={setFuelAlerts}
+                setShowAlertToast={setShowAlertToast}
+                isUsingMock={isUsingMock}
+              />
             </>
           )}
 
@@ -2704,6 +2828,7 @@ export default function App() {
         </main>
       </div>
 
+      <Chatbot />
     </div>
   );
 }
