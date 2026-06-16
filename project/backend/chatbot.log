@@ -1,0 +1,164 @@
+=== Chatbot Logger Session Initialized ===
+
+======================================================================
+[2026-06-16 15:44:00] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: give me list of vehicle
+STANDALONE REWRITE: give me list of vehicle
+GENERATED T-SQL: SELECT TOP 1000 v.id, v.reg_no, v.vehicle_name, v.make, v.model, v.fuel_type 
+FROM vehicles v 
+WHERE v.is_active = 1 
+ORDER BY v.vehicle_name ASC
+STATUS: success
+ROWS RETURNED: 22
+======================================================================
+
+======================================================================
+[2026-06-16 15:46:44] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: which vehicle have maximum harsh braking events
+STANDALONE REWRITE: Which vehicle in our fleet of 22 vehicles from manufacturers such as Ashok Leyland, BharatBenz, and Eicher, has the maximum number of harsh braking events?
+GENERATED T-SQL: SELECT TOP 1 v.vehicle_name, COUNT(bwe.id) AS TotalBrakeEvents 
+FROM vehicles v 
+INNER JOIN brake_wear_events bwe ON v.id = bwe.vehicle_id 
+INNER JOIN journeys j ON v.id = j.vehicle_id 
+WHERE bwe.event_type = 'harsh_brake' 
+GROUP BY v.vehicle_name 
+ORDER BY TotalBrakeEvents DESC
+STATUS: success
+ROWS RETURNED: 0
+======================================================================
+
+======================================================================
+[2026-06-16 15:47:23] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: which vehicle have maximum harsh escellring events
+STANDALONE REWRITE: Which vehicle in our fleet has the maximum harsh acceleration events
+GENERATED T-SQL: SELECT TOP 1 v.vehicle_name, SUM(j.accel_events) AS TotalAccelEvents 
+FROM vehicles v 
+INNER JOIN journeys j ON v.id = j.vehicle_id 
+GROUP BY v.vehicle_name 
+ORDER BY TotalAccelEvents DESC
+STATUS: success
+ROWS RETURNED: 1
+======================================================================
+
+======================================================================
+[2026-06-16 15:56:20] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: which vehicle have most brake event
+STANDALONE REWRITE: Which vehicle has the most brake events in our fleet.
+GENERATED T-SQL: SELECT TOP 1 v.vehicle_name, SUM(b.brake_count) AS TotalBrakeEvents 
+FROM brake_wear_events b 
+INNER JOIN vehicles v ON b.vehicle_id = v.id 
+GROUP BY v.vehicle_name 
+ORDER BY TotalBrakeEvents DESC
+STATUS: success
+ROWS RETURNED: 1
+======================================================================
+
+======================================================================
+[2026-06-16 16:36:33] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: give me all driver names
+STANDALONE REWRITE: give me all driver names
+GENERATED T-SQL: N/A
+STATUS: schema_error
+ROWS RETURNED: 0
+ERROR/TRACEBACK: Error loading database schema: 'QdrantClient' object has no attribute 'search'
+======================================================================
+
+======================================================================
+[2026-06-16 16:45:13] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: ih
+STANDALONE REWRITE: ih
+GENERATED T-SQL: N/A
+STATUS: out_of_scope
+ROWS RETURNED: 0
+======================================================================
+
+======================================================================
+[2026-06-16 16:45:39] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: how may break events
+STANDALONE REWRITE: What are the number of break events in the fleet.
+GENERATED T-SQL: SELECT SUM(j.brake_events) AS TotalBrakeEvents FROM journeys j
+STATUS: success
+ROWS RETURNED: 1
+======================================================================
+
+======================================================================
+[2026-06-16 16:52:45] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: can you give me top 3
+STANDALONE REWRITE: What are the top 3 vehicles or drivers with the most brake events in the fleet?
+GENERATED T-SQL: SELECT * FROM (
+  SELECT TOP 3 v.vehicle_name, COUNT(bwe.id) AS TotalBrakeEvents 
+  FROM vehicles v 
+  INNER JOIN brake_wear_events bwe ON v.id = bwe.vehicle_id 
+  GROUP BY v.vehicle_name 
+  ORDER BY TotalBrakeEvents DESC
+) AS vehicle_brake_events
+UNION ALL
+SELECT * FROM (
+  SELECT TOP 3 d.driver_name, COUNT(bwe.id) AS TotalBrakeEvents 
+  FROM drivers d 
+  INNER JOIN journeys j ON d.driver_id = j.driver_id 
+  INNER JOIN brake_wear_events bwe ON j.trip_id = bwe.trip_id 
+  GROUP BY d.driver_name 
+  ORDER BY TotalBrakeEvents DESC
+) AS driver_brake_events
+STATUS: success
+ROWS RETURNED: 3
+======================================================================
+
+======================================================================
+[2026-06-16 16:52:57] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: driver name
+STANDALONE REWRITE: What are the names of the drivers associated with the top 3 vehicles having the most brake events, namely the Eicher Pro 6031, Mahindra Bolero Maxi, and Ashok Leyland Ecomet 1415.
+GENERATED T-SQL: SELECT TOP 3 d.driver_name 
+FROM drivers d 
+INNER JOIN journeys j ON d.driver_id = j.driver_id 
+INNER JOIN vehicles v ON j.vehicle_id = v.id 
+INNER JOIN brake_wear_events bwe ON v.id = bwe.vehicle_id 
+WHERE v.vehicle_name IN ('Eicher Pro 6031', 'Mahindra Bolero Maxi', 'Ashok Leyland Ecomet 1415') 
+GROUP BY d.driver_name 
+ORDER BY COUNT(bwe.id) DESC
+STATUS: success
+ROWS RETURNED: 3
+======================================================================
+
+======================================================================
+[2026-06-16 17:02:41] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: okey
+STANDALONE REWRITE: Show me the current status of the fleet.
+GENERATED T-SQL: SELECT 
+    v.reg_no, 
+    v.vehicle_name, 
+    v.make, 
+    v.model, 
+    v.fuel_type, 
+    v.engine_cc, 
+    v.clutch_type, 
+    v.tire_type, 
+    v.battery_ah, 
+    v.is_active, 
+    cws.health_score, 
+    cws.rul, 
+    cws.accumulated_wear, 
+    ma.message, 
+    ma.alert_level
+FROM 
+    vehicles v
+INNER JOIN 
+    component_wear_state cws ON v.id = cws.vehicle_id
+LEFT JOIN 
+    maintenance_alerts ma ON v.id = ma.vehicle_id
+ORDER BY 
+    v.reg_no;
+STATUS: success
+ROWS RETURNED: 400
+======================================================================

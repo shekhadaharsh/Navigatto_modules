@@ -16,6 +16,40 @@ from chatbot_module import schema_service
 from chatbot_module import db_executor
 
 
+def log_chatbot_transaction(
+    query: str,
+    rewritten: str,
+    sql: Optional[str],
+    status: str,
+    error_msg: Optional[str],
+    rows_count: int
+):
+    import datetime
+    import os
+    
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_content = f"""
+======================================================================
+[{timestamp}] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: {query}
+STANDALONE REWRITE: {rewritten}
+GENERATED T-SQL: {sql if sql else "N/A"}
+STATUS: {status}
+ROWS RETURNED: {rows_count}
+"""
+    if error_msg:
+        log_content += f"ERROR/TRACEBACK: {error_msg}\n"
+    log_content += "======================================================================\n"
+    
+    try:
+        log_path = os.path.join(os.path.dirname(__file__), "..", "chatbot.log")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(log_content)
+    except Exception as e:
+        print(f"[ChatbotLogger] Failed to write log: {e}")
+
+
 async def process_query(
     query: str,
     history: Optional[List[Dict[str, str]]] = None
@@ -40,11 +74,22 @@ async def process_query(
     if rewritten_query != query:
         print(f"[ChatbotPipeline] Rewritten query: '{rewritten_query}'")
 
+    def log_and_return(res: Dict[str, Any]) -> Dict[str, Any]:
+        log_chatbot_transaction(
+            query=query,
+            rewritten=rewritten_query,
+            sql=res.get("sql"),
+            status=res.get("status"),
+            error_msg=res.get("message") if res.get("status") in ["db_error", "schema_error", "error", "blocked"] else None,
+            rows_count=len(res.get("rows", [])) if res.get("rows") else 0
+        )
+        return res
+
     # Stage 2: Scope Guard (Relevance Check)
     is_relevant = await llm_service.is_sql_relevant(rewritten_query)
     if not is_relevant:
         print(f"[ChatbotPipeline] Query out of scope: '{rewritten_query}'")
-        return {
+        return log_and_return({
             "status": "out_of_scope",
             "message": "I can only answer questions about fleet details, drivers, vehicles, journeys, wear events, and maintenance metrics. Please ask a database-related question.",
             "sql": None,
@@ -52,7 +97,7 @@ async def process_query(
             "rows": [],
             "suggestions": [],
             "rewritten_query": rewritten_query
-        }
+        })
 
     # Stage 3: Schema Selector
     # Select most relevant tables and format them into a compact schema context for the LLM
@@ -60,7 +105,7 @@ async def process_query(
         schema_context = schema_service.get_schema_context(rewritten_query, top_k=8)
     except Exception as e:
         print(f"[ChatbotPipeline] Error loading schema: {e}")
-        return {
+        return log_and_return({
             "status": "schema_error",
             "message": f"Error loading database schema: {str(e)}",
             "sql": None,
@@ -68,7 +113,7 @@ async def process_query(
             "rows": [],
             "suggestions": [],
             "rewritten_query": rewritten_query
-        }
+        })
 
     # Stage 4: SQL Generation
     sql = await llm_service.generate_sql(rewritten_query, schema_context)
@@ -77,7 +122,7 @@ async def process_query(
     print(f"[ChatbotPipeline] Generated SQL: {sql}")
 
     if sql.upper() == "CANNOT_GENERATE":
-        return {
+        return log_and_return({
             "status": "cannot_generate",
             "message": "I could not find a way to answer your question with the available database structure.",
             "sql": None,
@@ -85,7 +130,7 @@ async def process_query(
             "rows": [],
             "suggestions": [],
             "rewritten_query": rewritten_query
-        }
+        })
 
     # Stage 5: Execution + Healing Loop (Max 3 attempts)
     db_result = None
@@ -99,7 +144,7 @@ async def process_query(
         is_safe, blocked_word = db_executor.validate_sql_safety(final_sql)
         if not is_safe:
             print(f"[ChatbotPipeline] Security block: '{blocked_word}' in query '{final_sql}'")
-            return {
+            return log_and_return({
                 "status": "blocked",
                 "message": f"Security Alert: Blocked keyword '{blocked_word}' detected in generated query.",
                 "sql": final_sql,
@@ -107,7 +152,7 @@ async def process_query(
                 "rows": [],
                 "suggestions": [],
                 "rewritten_query": rewritten_query
-            }
+            })
 
         # Execute query
         db_result = await db_executor.execute_query(final_sql)
@@ -133,7 +178,7 @@ async def process_query(
     # If all execution attempts failed
     if not db_result or not db_result["success"]:
         error_msg = db_result.get("error", "Unknown database error") if db_result else "No result returned"
-        return {
+        return log_and_return({
             "status": "db_error",
             "message": f"Sorry, I encountered a database error while executing the query: {error_msg}",
             "sql": final_sql,
@@ -141,7 +186,7 @@ async def process_query(
             "rows": [],
             "suggestions": [],
             "rewritten_query": rewritten_query
-        }
+        })
 
     # Stage 6: Natural Language Answer Generation
     print("[ChatbotPipeline] Generating natural language answer...")
@@ -163,7 +208,7 @@ async def process_query(
             if sug_clean:
                 suggestions.append(sug_clean)
 
-    return {
+    return log_and_return({
         "status": "success",
         "message": answer_text,
         "sql": final_sql,
@@ -171,7 +216,7 @@ async def process_query(
         "rows": db_result["rows"],
         "suggestions": suggestions[:2],
         "rewritten_query": rewritten_query
-    }
+    })
 
 
 def clean_sql_query(sql: str) -> str:
