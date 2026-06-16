@@ -1,5 +1,6 @@
 import ReplayControl from './ReplayControl';
 import DeviceSimulator from './DeviceSimulator';
+import Chatbot from './components/Chatbot/Chatbot';
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
@@ -88,6 +89,8 @@ function TheftLocationMap({ lat, lng }) {
       <div style={{ fontSize: "11px", color: "#64748b", padding: "4px 8px", background: "#f8fafc", borderTop: "1px solid #e2e8f0" }}>
         📍 {lat.toFixed(5)}, {lng.toFixed(5)}
       </div>
+
+      <Chatbot />
     </div>
   );
 }
@@ -613,7 +616,8 @@ export default function App() {
               name: d.driver_name || fallbackName,
               avatar_color: getDriverColor(d.driver_id),
               vehicle_type: d.vehicle_type || fallbackVehicleType,
-              vehicle_id: d.vehicle_id || fallbackVehicleId
+              vehicle_id: d.vehicle_id || fallbackVehicleId,
+              total_distance_km: d.total_distance_km ?? d.total_distance ?? 0.0
             };
           });
 
@@ -652,23 +656,32 @@ export default function App() {
     const fetchJourneys = async () => {
       setIsLoadingJourneys(true);
       setJourneyDetails(null);
+      // ── Clear immediately so stale journeys never show for a different driver ──
+      setJourneys([]);
+      setActiveJourneyId(null);
 
       if (isUsingMock) {
         // Mock execution
         setTimeout(() => {
           const list = generateMockJourneys(activeDriverId);
           setJourneys(list);
-          setActiveJourneyId(prev => {
-            if (prev && list.some(t => t.journey_id === prev)) return prev;
-            return list.length > 0 ? list[0].journey_id : null;
-          });
+          setActiveJourneyId(list.length > 0 ? list[0].journey_id : null);
           setIsLoadingJourneys(false);
         }, 300);
       } else {
         try {
           // Maps to GET /drivers/{driver_id}/trips on FastAPI
           const res = await fetch(`/api/drivers/${activeDriverId}/trips`);
-          if (!res.ok) throw new Error('Network error');
+
+          // 404 = new driver with no trips yet — show empty list, not an error
+          if (res.status === 404) {
+            setJourneys([]);
+            setActiveJourneyId(null);
+            return;
+          }
+
+          if (!res.ok) throw new Error(`API error: ${res.status}`);
+
           const list = await res.json();
           // Normalize: backend returns trip_id, frontend uses journey_id
           const normalized = list.map(t => ({
@@ -682,12 +695,12 @@ export default function App() {
             maintenance_critical: false,
           }));
           setJourneys(normalized);
-          setActiveJourneyId(prev => {
-            if (prev && normalized.some(t => t.journey_id === prev)) return prev;
-            return normalized.length > 0 ? normalized[0].journey_id : null;
-          });
+          setActiveJourneyId(normalized.length > 0 ? normalized[0].journey_id : null);
         } catch (err) {
           console.error("Error loading journeys", err);
+          // Always clear stale state on error
+          setJourneys([]);
+          setActiveJourneyId(null);
         } finally {
           setIsLoadingJourneys(false);
         }
@@ -1287,15 +1300,19 @@ export default function App() {
                             </span>
                           )}
                         </span>
-                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 ${getScoreColorClass(d.avg_score)}`}>
-                          {d.avg_score}
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold shrink-0 ${
+                          d.total_trips === 0
+                            ? 'bg-slate-100 text-slate-400'
+                            : getScoreColorClass(d.avg_score)
+                        }`}>
+                          {d.total_trips === 0 ? '—' : d.avg_score}
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-[11px] font-medium text-slate-400">
-                        <span className="truncate flex items-center gap-1">
-                          <Truck className="w-3.5 h-3.5 shrink-0 text-slate-300" /> {d.vehicle_type}
+                        <span className="truncate flex items-center gap-1 text-slate-400 font-semibold bg-slate-100/80 px-1.5 py-0.5 rounded">
+                          ID: {d.driver_id}
                         </span>
-                        <span>{d.total_trips} trips</span>
+                        <span>{d.total_trips} trip{d.total_trips !== 1 ? 's' : ''}</span>
                       </div>
                     </div>
                   </button>
@@ -1400,7 +1417,19 @@ export default function App() {
                       <span className="text-xs text-slate-400 font-medium">Retrieving journeys...</span>
                     </div>
                   ) : filteredJourneys.length === 0 ? (
-                    <div className="text-center p-6 text-xs text-slate-400 font-medium">No matching journeys found.</div>
+                    journeys.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center gap-3 p-8 text-center">
+                        <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center">
+                          <Navigation className="w-5 h-5 text-slate-300" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500">No trips yet</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">Use the Simulator to inject a trip for this driver.</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center p-6 text-xs text-slate-400 font-medium">No matching journeys found.</div>
+                    )
                   ) : (
                     filteredJourneys.map(j => {
                       const isActive = j.journey_id === activeJourneyId;
@@ -1510,6 +1539,15 @@ export default function App() {
                           <span className="font-bold text-slate-700">{journeyDetails.journey.end_time.split(' ')[1]}</span>
                           <span className="w-1 h-1 rounded-full bg-slate-300"></span>
                           <span className="text-slate-500 font-semibold uppercase">{journeyDetails.journey.route_type} route</span>
+                          {journeyDetails.journey.vehicle_type && (
+                            <>
+                              <span className="w-1 h-1 rounded-full bg-slate-300"></span>
+                              <span className="flex items-center gap-1 font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                                <Truck className="w-3.5 h-3.5 text-brand-500" />
+                                {journeyDetails.journey.vehicle_type} ({journeyDetails.journey.vehicle_id})
+                              </span>
+                            </>
+                          )}
                         </div>
                       </div>
 
@@ -2788,6 +2826,7 @@ export default function App() {
         </main>
       </div>
 
+      <Chatbot />
     </div>
   );
 }

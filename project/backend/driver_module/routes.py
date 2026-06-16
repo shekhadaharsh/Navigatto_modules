@@ -306,8 +306,32 @@ def get_all_drivers(background_tasks: BackgroundTasks, db: Session = Depends(get
             )
         )
 
-    # Sort by avg_score descending
-    result.sort(key=lambda x: x.avg_score, reverse=True)
+    # Sort by avg_score descending (drivers with trips first, then 0-trip drivers at end)
+    result.sort(key=lambda x: (x.total_trips == 0, -x.avg_score))
+
+    # ── Include drivers registered in DB but with 0 trips yet ──────────────────
+    # drivers_map has ALL drivers (from dbo.drivers table).
+    # driver_trips only has drivers who appear in dbo.journeys.
+    # Any driver in drivers_map but NOT in driver_trips has 0 trips — include them.
+    drivers_with_trips = set(driver_trips.keys())
+    for driver_id, driver_name in drivers_map.items():
+        if driver_id not in drivers_with_trips:
+            result.append(
+                DriverSummary(
+                    driver_id=driver_id,
+                    driver_name=driver_name or f"Driver {driver_id}",
+                    vehicle_type="N/A",
+                    vehicle_id="N/A",
+                    total_odometer_km=0.0,
+                    engine_total_hours=0.0,
+                    total_trips=0,
+                    avg_score=0.0,
+                    risk_level="N/A",
+                    total_distance=0.0,
+                    ml_score=None,
+                    rule_based_score=None,
+                )
+            )
 
     # Queue unscored trips for background processing in chunks of 50
     if unscored_trip_ids:
@@ -826,6 +850,7 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
             "journey_id":           trip.trip_id,
             "driver_id":            trip.driver_id,
             "vehicle_id":           trip.vehicle_id or "N/A",
+            "vehicle_type":         trip.vehicle.vehicle_type if trip.vehicle else (getattr(trip, "vehicle_type", "Unknown")),
             "start_time":           str(trip.trip_start) if trip.trip_start else None,
             "end_time":             str(trip.trip_end)   if trip.trip_end   else None,
             "route_type":           trip.route_type or "Unknown",

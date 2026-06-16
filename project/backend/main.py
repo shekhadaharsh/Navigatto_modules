@@ -14,6 +14,7 @@ from database.db import Base, engine
 from driver_module.routes import router as driver_router
 from fuel_module.routes import router as fuel_router
 from maintenance_module.routes import router as maint_router
+from simulation_module.routes import router as sim_router
 
 # ─────────────────────────────────────────
 # Create DB tables on startup
@@ -171,6 +172,7 @@ app.add_middleware(
 app.include_router(driver_router)
 app.include_router(fuel_router)
 app.include_router(maint_router)
+app.include_router(sim_router)
 
 
 
