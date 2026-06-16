@@ -119,7 +119,12 @@ export default function DeviceSimulator({
     vehicle_type: 'Mini Truck',
     make: '',
     model: '',
-    is_active: true
+    is_active: true,
+    brake_life: 50000,
+    engine_life: 10000,
+    tire_life: 80000,
+    battery_life: 5000,
+    clutch_life: 60000
   });
 
   // Sync default driver and vehicle selection when drivers list or vehicles list changes
@@ -575,7 +580,7 @@ export default function DeviceSimulator({
         ].slice(0, 20));
         setIsSimSubmitting(false);
         setSimStatusMsg('✓ Vehicle registered (In-Memory)!');
-        setNewVehicle({ vehicle_id: '', reg_no: '', vehicle_name: '', vehicle_type: 'Mini Truck', make: '', model: '', is_active: true });
+        setNewVehicle({ vehicle_id: '', reg_no: '', vehicle_name: '', vehicle_type: 'Mini Truck', make: '', model: '', is_active: true, brake_life: 50000, engine_life: 10000, tire_life: 80000, battery_life: 5000, clutch_life: 60000 });
         setTimeout(() => setSimStatusMsg(''), 3000);
       }, 600);
     } else {
@@ -591,7 +596,12 @@ export default function DeviceSimulator({
             vehicle_type: newVehicle.vehicle_type,
             make:         newVehicle.make || '',
             model:        newVehicle.model || '',
-            is_active:    newVehicle.is_active
+            is_active:    newVehicle.is_active,
+            brake_life:   Number(newVehicle.brake_life),
+            engine_life:  Number(newVehicle.engine_life),
+            tire_life:    Number(newVehicle.tire_life),
+            battery_life: Number(newVehicle.battery_life),
+            clutch_life:  Number(newVehicle.clutch_life)
           })
         });
         const data = await response.json();
@@ -601,7 +611,7 @@ export default function DeviceSimulator({
             ...prev
           ].slice(0, 20));
           setSimStatusMsg('✓ Vehicle registered in Database!');
-          setNewVehicle({ vehicle_id: '', reg_no: '', vehicle_name: '', vehicle_type: 'Mini Truck', make: '', model: '', is_active: true });
+          setNewVehicle({ vehicle_id: '', reg_no: '', vehicle_name: '', vehicle_type: 'Mini Truck', make: '', model: '', is_active: true, brake_life: 50000, engine_life: 10000, tire_life: 80000, battery_life: 5000, clutch_life: 60000 });
           // Refresh vehicles list from DB
           const res = await fetch('/api/simulation/vehicles');
           if (res.ok) setVehicles(await res.json());
@@ -1116,6 +1126,62 @@ export default function DeviceSimulator({
                           className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-violet-500 bg-slate-50/50"
                           placeholder="e.g. 2024 V2"
                         />
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100">
+                      <h4 className="text-[10px] font-extrabold text-slate-800 uppercase tracking-wider mb-3">Maintenance Baseline</h4>
+                      <div className="grid grid-cols-5 gap-3">
+                        <div>
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5" title="Brake Base Life (km)">Brake (km)</label>
+                          <input
+                            type="number"
+                            value={newVehicle.brake_life}
+                            onChange={e => setNewVehicle(prev => ({ ...prev, brake_life: e.target.value }))}
+                            className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-violet-500 bg-slate-50/50"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5" title="Engine Base Life (hours)">Engine (hrs)</label>
+                          <input
+                            type="number"
+                            value={newVehicle.engine_life}
+                            onChange={e => setNewVehicle(prev => ({ ...prev, engine_life: e.target.value }))}
+                            className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-violet-500 bg-slate-50/50"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5" title="Tire Base Life (km)">Tire (km)</label>
+                          <input
+                            type="number"
+                            value={newVehicle.tire_life}
+                            onChange={e => setNewVehicle(prev => ({ ...prev, tire_life: e.target.value }))}
+                            className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-violet-500 bg-slate-50/50"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5" title="Battery Base Life (cycles)">Battery (cyc)</label>
+                          <input
+                            type="number"
+                            value={newVehicle.battery_life}
+                            onChange={e => setNewVehicle(prev => ({ ...prev, battery_life: e.target.value }))}
+                            className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-violet-500 bg-slate-50/50"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5" title="Clutch Base Life (km)">Clutch (km)</label>
+                          <input
+                            type="number"
+                            value={newVehicle.clutch_life}
+                            onChange={e => setNewVehicle(prev => ({ ...prev, clutch_life: e.target.value }))}
+                            className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-violet-500 bg-slate-50/50"
+                            required
+                          />
+                        </div>
                       </div>
                     </div>
 

@@ -5,7 +5,7 @@ Maps to navigatto_new database tables under the 'dbo' schema.
 """
 
 from sqlalchemy.dialects.mssql import UNIQUEIDENTIFIER
-from sqlalchemy import Column, NVARCHAR, Integer, String, Float, DateTime, Boolean, ForeignKey, Numeric
+from sqlalchemy import Column, NVARCHAR, Integer, String, Float, DateTime, Boolean, ForeignKey, Numeric, FetchedValue
 from sqlalchemy.orm import relationship
 from database.db import Base
 
@@ -19,14 +19,14 @@ class ComponentWearState(Base):
     __table_args__ = {"schema": "dbo"}
 
     id = Column(UNIQUEIDENTIFIER, primary_key=True)
-    vehicle_id = Column(UNIQUEIDENTIFIER, ForeignKey("dbo.vehicles.id"), nullable=False)
+    vehicle_id = Column(String, ForeignKey("dbo.vehicles.id"), nullable=False)
     component        = Column(NVARCHAR(20), nullable=False)
     accumulated_wear = Column(Numeric(14, 4), nullable=False, default=0.0)
     base_life        = Column(Numeric(14, 4), nullable=False)
     
     # Computed columns on DB level (treated as read-only in Python)
-    rul              = Column(Numeric(14, 4))
-    health_score     = Column(Numeric(5, 2))
+    rul              = Column(Numeric(14, 4), FetchedValue(), server_onupdate=FetchedValue())
+    health_score     = Column(Numeric(5, 2), FetchedValue(), server_onupdate=FetchedValue())
     
     last_updated     = Column(DateTime, default=None)
 
@@ -43,11 +43,14 @@ class MaintenanceAlert(Base):
     __table_args__ = {"schema": "dbo"}
 
     id = Column(UNIQUEIDENTIFIER, primary_key=True)
-    vehicle_id = Column(UNIQUEIDENTIFIER, ForeignKey("dbo.vehicles.id"), nullable=False)
+    vehicle_id = Column(String, ForeignKey("dbo.vehicles.id"), nullable=False)
     component       = Column(NVARCHAR(20), nullable=False)
     ts              = Column(DateTime, nullable=False)
-    rul_at_alert    = Column(Numeric(14, 4))
-    health_at_alert = Column(Numeric(5, 2))
+    
+    # Computed
+    rul_at_alert    = Column(Numeric(14, 4), FetchedValue(), server_onupdate=FetchedValue())
+    health_at_alert = Column(Numeric(5, 2), FetchedValue(), server_onupdate=FetchedValue())
+    
     alert_level     = Column(String(10))  # warning | critical | urgent
     message         = Column(String(500))
     acknowledged    = Column(Boolean, default=False)
@@ -83,7 +86,7 @@ class ComponentBaseLife(Base):
     __table_args__ = {"schema": "dbo"}
 
     id = Column(UNIQUEIDENTIFIER, primary_key=True)
-    vehicle_id = Column(UNIQUEIDENTIFIER, ForeignKey("dbo.vehicles.id"), nullable=False)
+    vehicle_id = Column(String, ForeignKey("dbo.vehicles.id"), nullable=False)
     component      = Column(NVARCHAR(20), nullable=False)
     base_life      = Column(Numeric(12, 2), nullable=False)
     wear_unit_type = Column(String(30))
@@ -102,7 +105,7 @@ class BrakeWearEvent(Base):
     __table_args__ = {"schema": "dbo"}
 
     id             = Column(Integer, primary_key=True, autoincrement=True)
-    vehicle_id = Column(UNIQUEIDENTIFIER, ForeignKey("dbo.vehicles.id"), nullable=False)
+    vehicle_id = Column(String, ForeignKey("dbo.vehicles.id"), nullable=False)
     trip_id = Column(NVARCHAR(20), ForeignKey("dbo.journeys.trip_id"), nullable=True)
     ts             = Column(DateTime, nullable=False)
     brake_count    = Column(Integer)
@@ -125,7 +128,7 @@ class ClutchWearEvent(Base):
     __table_args__ = {"schema": "dbo"}
 
     id             = Column(Integer, primary_key=True, autoincrement=True)
-    vehicle_id = Column(UNIQUEIDENTIFIER, ForeignKey("dbo.vehicles.id"), nullable=False)
+    vehicle_id = Column(String, ForeignKey("dbo.vehicles.id"), nullable=False)
     trip_id = Column(NVARCHAR(20), ForeignKey("dbo.journeys.trip_id"), nullable=True)
     ts             = Column(DateTime, nullable=False)
     event_type     = Column(NVARCHAR(20))
@@ -148,7 +151,7 @@ class TireWearEvent(Base):
     __table_args__ = {"schema": "dbo"}
 
     id             = Column(Integer, primary_key=True, autoincrement=True)
-    vehicle_id = Column(UNIQUEIDENTIFIER, ForeignKey("dbo.vehicles.id"), nullable=False)
+    vehicle_id = Column(String, ForeignKey("dbo.vehicles.id"), nullable=False)
     trip_id = Column(NVARCHAR(20), ForeignKey("dbo.journeys.trip_id"), nullable=True)
     ts             = Column(DateTime, nullable=False)
     distance_km    = Column(Numeric(10, 3))
@@ -170,7 +173,7 @@ class BatteryWearEvent(Base):
     __table_args__ = {"schema": "dbo"}
 
     id             = Column(Integer, primary_key=True, autoincrement=True)
-    vehicle_id = Column(UNIQUEIDENTIFIER, ForeignKey("dbo.vehicles.id"), nullable=False)
+    vehicle_id = Column(String, ForeignKey("dbo.vehicles.id"), nullable=False)
     trip_id = Column(NVARCHAR(20), ForeignKey("dbo.journeys.trip_id"), nullable=True)
     ts             = Column(DateTime, nullable=False)
     startup_cycle  = Column(Integer)
@@ -192,7 +195,7 @@ class EngineWearEvent(Base):
     __table_args__ = {"schema": "dbo"}
 
     id             = Column(Integer, primary_key=True, autoincrement=True)
-    vehicle_id = Column(UNIQUEIDENTIFIER, ForeignKey("dbo.vehicles.id"), nullable=False)
+    vehicle_id = Column(String, ForeignKey("dbo.vehicles.id"), nullable=False)
     trip_id = Column(NVARCHAR(20), ForeignKey("dbo.journeys.trip_id"), nullable=True)
     ts             = Column(DateTime, nullable=False)
     rpm            = Column(Integer)
@@ -218,7 +221,7 @@ class HarshEvent(Base):
     __table_args__ = {"schema": "dbo"}
 
     id         = Column(Integer, primary_key=True, autoincrement=True)
-    vehicle_id = Column(UNIQUEIDENTIFIER, ForeignKey("dbo.vehicles.id"), nullable=False)
+    vehicle_id = Column(String, ForeignKey("dbo.vehicles.id"), nullable=False)
     trip_id = Column(NVARCHAR(20), ForeignKey("dbo.journeys.trip_id"), nullable=True)
     ts         = Column(DateTime, nullable=False)
     event_type = Column(NVARCHAR(20))
@@ -237,7 +240,7 @@ class RawTelemetry(Base):
     __table_args__ = {"schema": "dbo"}
 
     id              = Column(Integer, primary_key=True, autoincrement=True)
-    vehicle_id = Column(UNIQUEIDENTIFIER, ForeignKey("dbo.vehicles.id"), nullable=False)
+    vehicle_id = Column(String, ForeignKey("dbo.vehicles.id"), nullable=False)
     trip_id = Column(NVARCHAR(20), ForeignKey("dbo.journeys.trip_id"), nullable=True)
     ts              = Column(DateTime, nullable=False)
     speed           = Column(Float)

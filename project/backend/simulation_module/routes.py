@@ -13,6 +13,15 @@ Endpoints:
 import datetime
 import random
 import string
+import uuid
+
+def _get_vehicle_uuid(vid_str: str) -> str:
+    """Generate deterministic UUID from string ID (e.g. VH021) to satisfy SQL Server UNIQUEIDENTIFIER constraints."""
+    try:
+        uuid.UUID(vid_str)
+        return vid_str
+    except ValueError:
+        return str(uuid.uuid5(uuid.NAMESPACE_OID, vid_str))
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -65,6 +74,11 @@ class AddVehicleRequest(BaseModel):
     make:         Optional[str] = None
     model:        Optional[str] = None
     is_active:    bool = True
+    brake_life:   float = 50000.0
+    engine_life:  float = 10000.0
+    tire_life:    float = 80000.0
+    battery_life: float = 5000.0
+    clutch_life:  float = 60000.0
 
 
 # ─────────────────────────────────────────
@@ -105,7 +119,8 @@ def inject_trip(payload: InjectTripRequest, db: Session = Depends(get_db)):
         )
 
     # 2. Validate vehicle exists
-    vehicle = db.query(Vehicle).filter(Vehicle.id == payload.vehicle_id).first()
+    real_v_id = _get_vehicle_uuid(payload.vehicle_id)
+    vehicle = db.query(Vehicle).filter(Vehicle.id == real_v_id).first()
     if not vehicle:
         raise HTTPException(
             status_code=404,
@@ -120,7 +135,7 @@ def inject_trip(payload: InjectTripRequest, db: Session = Depends(get_db)):
     trip = Trip(
         trip_id             = trip_id,
         driver_id           = payload.driver_id,
-        vehicle_id          = payload.vehicle_id,
+        vehicle_id          = real_v_id,
         route_type          = payload.route_type,
         trip_start          = now - datetime.timedelta(minutes=payload.duration_min),
         trip_end            = now,
@@ -196,7 +211,7 @@ def inject_trip(payload: InjectTripRequest, db: Session = Depends(get_db)):
     # 7. Save JourneyScore record
     journey_score = JourneyScore(
         trip_id            = trip_id,
-        vehicle_id         = payload.vehicle_id,
+        vehicle_id         = real_v_id,
         driver_id          = payload.driver_id,
         actual_fuel_used_L = payload.actual_fuel_used_l,
         expected_fuel_L    = round(expected_fuel_rough, 2),
@@ -282,8 +297,11 @@ def add_vehicle(payload: AddVehicleRequest, db: Session = Depends(get_db)):
     Returns 409 Conflict if vehicle_id already exists.
     """
 
+    # Convert string ID to valid UUID format for SQL Server
+    real_v_id = _get_vehicle_uuid(payload.vehicle_id)
+
     # Check for duplicate
-    existing = db.query(Vehicle).filter(Vehicle.id == payload.vehicle_id).first()
+    existing = db.query(Vehicle).filter(Vehicle.id == real_v_id).first()
     if existing:
         raise HTTPException(
             status_code=409,
@@ -291,7 +309,7 @@ def add_vehicle(payload: AddVehicleRequest, db: Session = Depends(get_db)):
         )
 
     new_vehicle = Vehicle(
-        id           = payload.vehicle_id,
+        id           = real_v_id,
         reg_no       = payload.reg_no,
         vehicle_name = payload.vehicle_name or f"{payload.make or 'Vehicle'} {payload.model or ''}".strip(),
         vehicle_type = payload.vehicle_type,
@@ -300,6 +318,39 @@ def add_vehicle(payload: AddVehicleRequest, db: Session = Depends(get_db)):
         is_active    = payload.is_active,
     )
     db.add(new_vehicle)
+
+    import uuid
+    from maintenance_module.model import ComponentBaseLife, ComponentWearState
+
+    now = datetime.datetime.now()
+    baselines = [
+        ("brake", payload.brake_life, "km"),
+        ("engine", payload.engine_life, "hours"),
+        ("tire", payload.tire_life, "km"),
+        ("battery", payload.battery_life, "cycles"),
+        ("clutch", payload.clutch_life, "km"),
+    ]
+
+    for comp_name, base_life, unit in baselines:
+        bl = ComponentBaseLife(
+            id=uuid.uuid4(),
+            vehicle_id=real_v_id,
+            component=comp_name,
+            base_life=base_life,
+            wear_unit_type=unit,
+            created_at=now
+        )
+        db.add(bl)
+
+        ws = ComponentWearState(
+            id=uuid.uuid4(),
+            vehicle_id=real_v_id,
+            component=comp_name,
+            accumulated_wear=0.0,
+            base_life=base_life,
+            last_updated=now
+        )
+        db.add(ws)
 
     try:
         db.commit()
