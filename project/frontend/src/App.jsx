@@ -89,8 +89,6 @@ function TheftLocationMap({ lat, lng }) {
       <div style={{ fontSize: "11px", color: "#64748b", padding: "4px 8px", background: "#f8fafc", borderTop: "1px solid #e2e8f0" }}>
         📍 {lat.toFixed(5)}, {lng.toFixed(5)}
       </div>
-
-      <Chatbot />
     </div>
   );
 }
