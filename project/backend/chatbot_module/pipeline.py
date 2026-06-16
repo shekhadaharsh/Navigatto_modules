@@ -50,7 +50,8 @@ async def process_query(
             "sql": None,
             "columns": [],
             "rows": [],
-            "suggestions": []
+            "suggestions": [],
+            "rewritten_query": rewritten_query
         }
 
     # Stage 3: Schema Selector
@@ -65,7 +66,8 @@ async def process_query(
             "sql": None,
             "columns": [],
             "rows": [],
-            "suggestions": []
+            "suggestions": [],
+            "rewritten_query": rewritten_query
         }
 
     # Stage 4: SQL Generation
@@ -81,7 +83,8 @@ async def process_query(
             "sql": None,
             "columns": [],
             "rows": [],
-            "suggestions": []
+            "suggestions": [],
+            "rewritten_query": rewritten_query
         }
 
     # Stage 5: Execution + Healing Loop (Max 3 attempts)
@@ -102,7 +105,8 @@ async def process_query(
                 "sql": final_sql,
                 "columns": [],
                 "rows": [],
-                "suggestions": []
+                "suggestions": [],
+                "rewritten_query": rewritten_query
             }
 
         # Execute query
@@ -135,7 +139,8 @@ async def process_query(
             "sql": final_sql,
             "columns": [],
             "rows": [],
-            "suggestions": []
+            "suggestions": [],
+            "rewritten_query": rewritten_query
         }
 
     # Stage 6: Natural Language Answer Generation
@@ -154,7 +159,7 @@ async def process_query(
         answer_text = parts[0].strip()
         suggestions_raw = parts[1].strip().split("\n")
         for sug in suggestions_raw:
-            sug_clean = sug.strip("- *•").strip()
+            sug_clean = sug.strip("- *•").replace("*", "").strip()
             if sug_clean:
                 suggestions.append(sug_clean)
 
@@ -164,7 +169,8 @@ async def process_query(
         "sql": final_sql,
         "columns": db_result["columns"],
         "rows": db_result["rows"],
-        "suggestions": suggestions[:2]
+        "suggestions": suggestions[:2],
+        "rewritten_query": rewritten_query
     }
 
 

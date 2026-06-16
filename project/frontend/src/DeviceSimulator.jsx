@@ -35,6 +35,32 @@ export default function DeviceSimulator({
   const [activeTab, setActiveTab] = useState('trip'); // 'trip', 'driver', 'vehicle'
   const [simStatusMsg, setSimStatusMsg] = useState('');
   const [isSimSubmitting, setIsSimSubmitting] = useState(false);
+
+  // Chatbot CMD Logs state (persisted in localStorage)
+  const [chatbotLogs, setChatbotLogs] = useState(() => {
+    try {
+      const saved = localStorage.getItem('chatbot_cmd_logs');
+      return saved ? JSON.parse(saved) : [];
+    } catch (_) {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('chatbot_cmd_logs', JSON.stringify(chatbotLogs));
+  }, [chatbotLogs]);
+
+  useEffect(() => {
+    const handleChatbotLog = (e) => {
+      if (e.detail) {
+        setChatbotLogs(prev => [e.detail, ...prev].slice(0, 50));
+      }
+    };
+    window.addEventListener('chatbot-log', handleChatbotLog);
+    return () => {
+      window.removeEventListener('chatbot-log', handleChatbotLog);
+    };
+  }, []);
   
   // Simulator logs state
   const [simLogs, setSimLogs] = useState([
@@ -119,7 +145,12 @@ export default function DeviceSimulator({
     vehicle_type: 'Mini Truck',
     make: '',
     model: '',
-    is_active: true
+    is_active: true,
+    brake_life: 50000,
+    engine_life: 10000,
+    tire_life: 80000,
+    battery_life: 5000,
+    clutch_life: 60000
   });
 
   // Sync default driver and vehicle selection when drivers list or vehicles list changes
@@ -575,7 +606,7 @@ export default function DeviceSimulator({
         ].slice(0, 20));
         setIsSimSubmitting(false);
         setSimStatusMsg('✓ Vehicle registered (In-Memory)!');
-        setNewVehicle({ vehicle_id: '', reg_no: '', vehicle_name: '', vehicle_type: 'Mini Truck', make: '', model: '', is_active: true });
+        setNewVehicle({ vehicle_id: '', reg_no: '', vehicle_name: '', vehicle_type: 'Mini Truck', make: '', model: '', is_active: true, brake_life: 50000, engine_life: 10000, tire_life: 80000, battery_life: 5000, clutch_life: 60000 });
         setTimeout(() => setSimStatusMsg(''), 3000);
       }, 600);
     } else {
@@ -591,7 +622,12 @@ export default function DeviceSimulator({
             vehicle_type: newVehicle.vehicle_type,
             make:         newVehicle.make || '',
             model:        newVehicle.model || '',
-            is_active:    newVehicle.is_active
+            is_active:    newVehicle.is_active,
+            brake_life:   Number(newVehicle.brake_life),
+            engine_life:  Number(newVehicle.engine_life),
+            tire_life:    Number(newVehicle.tire_life),
+            battery_life: Number(newVehicle.battery_life),
+            clutch_life:  Number(newVehicle.clutch_life)
           })
         });
         const data = await response.json();
@@ -601,7 +637,7 @@ export default function DeviceSimulator({
             ...prev
           ].slice(0, 20));
           setSimStatusMsg('✓ Vehicle registered in Database!');
-          setNewVehicle({ vehicle_id: '', reg_no: '', vehicle_name: '', vehicle_type: 'Mini Truck', make: '', model: '', is_active: true });
+          setNewVehicle({ vehicle_id: '', reg_no: '', vehicle_name: '', vehicle_type: 'Mini Truck', make: '', model: '', is_active: true, brake_life: 50000, engine_life: 10000, tire_life: 80000, battery_life: 5000, clutch_life: 60000 });
           // Refresh vehicles list from DB
           const res = await fetch('/api/simulation/vehicles');
           if (res.ok) setVehicles(await res.json());
@@ -694,6 +730,18 @@ export default function DeviceSimulator({
               <span>3. Add Vehicle</span>
             </button>
 
+            {/* Tab: Chatbot CMD Logs */}
+            <button
+              onClick={() => setActiveTab('chatbot')}
+              className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl text-xs font-bold transition-all border-0 outline-none cursor-pointer text-left
+                ${activeTab === 'chatbot'
+                  ? 'bg-violet-600 text-white shadow-premium-sm font-black'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-800'}`}
+            >
+              <Terminal className="w-4 h-4" />
+              <span>4. Chatbot CMD Logs</span>
+            </button>
+
             <div className="flex-1" />
 
             {/* Active Status Badge */}
@@ -711,11 +759,108 @@ export default function DeviceSimulator({
           {/* Form Content Area (Right side) */}
           <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
             
-            {/* Left side of workspace: The active form (Trip, Driver, or Vehicle) */}
-            <div className="lg:col-span-7 flex flex-col justify-between">
-              
-              {/* Render Tab: TRIP SIMULATION FORM */}
-              {activeTab === 'trip' && (
+            {activeTab === 'chatbot' ? (
+              <div className="lg:col-span-12 flex flex-col justify-between h-full space-y-4 min-h-0 w-full font-sans">
+                <div className="space-y-4 overflow-y-auto pr-1 flex-1" style={{ maxHeight: 'calc(85vh - 220px)' }}>
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider font-outfit flex items-center gap-2">
+                      <Terminal className="w-4 h-4 text-violet-500 animate-pulse" />
+                      Chatbot T-SQL Execution Logs & Errors
+                    </h3>
+                    {chatbotLogs.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setChatbotLogs([])}
+                        className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-xs font-bold transition-all border-0 cursor-pointer"
+                      >
+                        Clear CMD Logs
+                      </button>
+                    )}
+                  </div>
+                  
+                  {chatbotLogs.length === 0 ? (
+                    <div className="text-center py-12 text-slate-400 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                      <Terminal className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      <p className="text-xs font-bold uppercase tracking-wider">No Chatbot Transactions logged yet</p>
+                      <p className="text-[11px] font-medium mt-1">Submit a question in the chatbot to see T-SQL query translation and execution errors here.</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-4">
+                      {chatbotLogs.map((log) => (
+                        <div key={log.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 shadow-sm font-mono text-[11px] text-slate-300">
+                          {/* Log Header */}
+                          <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
+                            <span className="text-slate-500 font-bold">{log.timestamp}</span>
+                            <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider
+                              ${log.status === 'success' 
+                                ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' 
+                                : log.status === 'out_of_scope' || log.status === 'cannot_generate'
+                                  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20'
+                                  : 'bg-rose-500/15 text-rose-400 border border-rose-500/20'}`}>
+                              {log.status}
+                            </span>
+                          </div>
+
+                          {/* Details */}
+                          <div className="space-y-2.5">
+                            <div>
+                              <span className="text-slate-500 font-bold block mb-0.5">QUESTION:</span>
+                              <p className="text-white font-sans text-xs">{log.query}</p>
+                            </div>
+
+                            {log.rewritten && log.rewritten !== log.query && (
+                              <div>
+                                <span className="text-slate-500 font-bold block mb-0.5">STANDALONE REWRITE:</span>
+                                <p className="text-violet-300 font-sans text-xs">{log.rewritten}</p>
+                              </div>
+                            )}
+
+                            {log.sql && (
+                              <div>
+                                <span className="text-slate-500 font-bold block mb-0.5">GENERATED T-SQL QUERY:</span>
+                                <pre className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-emerald-400 overflow-x-auto whitespace-pre-wrap break-all font-mono leading-relaxed">
+                                  {log.sql}
+                                </pre>
+                              </div>
+                            )}
+
+                            <div className="flex gap-6 text-[10px]">
+                              <div>
+                                <span className="text-slate-500 font-bold">ROWS RETURNED:</span>{' '}
+                                <span className="text-slate-200">{log.rowsCount}</span>
+                              </div>
+                              {log.sql && (
+                                <div>
+                                  <span className="text-slate-500 font-bold">EXECUTION STATUS:</span>{' '}
+                                  <span className={log.status === 'success' ? 'text-emerald-400' : 'text-rose-400'}>
+                                    {log.status === 'success' ? 'SUCCESS' : 'FAILED'}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+
+                            {log.error && (
+                              <div className="border-t border-slate-800/60 pt-2.5">
+                                <span className="text-rose-400 font-bold block mb-1">DATABASE ERROR TRACEBACK:</span>
+                                <pre className="bg-rose-950/25 border border-rose-900/40 text-rose-300 p-3 rounded-lg overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed">
+                                  {log.error}
+                                </pre>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Left side of workspace: The active form (Trip, Driver, or Vehicle) */}
+                <div className="lg:col-span-7 flex flex-col justify-between">
+                  
+                  {/* Render Tab: TRIP SIMULATION FORM */}
+                  {activeTab === 'trip' && (
                 <form onSubmit={handleInjectTrip} className="flex flex-col justify-between h-full space-y-4">
                   <div className="space-y-4 overflow-y-auto pr-1" style={{ maxHeight: 'calc(85vh - 220px)' }}>
                     <h3 className="text-sm font-extrabold text-slate-800 uppercase tracking-wider font-outfit border-b border-slate-100 pb-2 flex items-center gap-2">
@@ -1119,6 +1264,62 @@ export default function DeviceSimulator({
                       </div>
                     </div>
 
+                    <div className="pt-2 border-t border-slate-100">
+                      <h4 className="text-[10px] font-extrabold text-slate-800 uppercase tracking-wider mb-3">Maintenance Baseline</h4>
+                      <div className="grid grid-cols-5 gap-3">
+                        <div>
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5" title="Brake Base Life (km)">Brake (km)</label>
+                          <input
+                            type="number"
+                            value={newVehicle.brake_life}
+                            onChange={e => setNewVehicle(prev => ({ ...prev, brake_life: e.target.value }))}
+                            className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-violet-500 bg-slate-50/50"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5" title="Engine Base Life (hours)">Engine (hrs)</label>
+                          <input
+                            type="number"
+                            value={newVehicle.engine_life}
+                            onChange={e => setNewVehicle(prev => ({ ...prev, engine_life: e.target.value }))}
+                            className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-violet-500 bg-slate-50/50"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5" title="Tire Base Life (km)">Tire (km)</label>
+                          <input
+                            type="number"
+                            value={newVehicle.tire_life}
+                            onChange={e => setNewVehicle(prev => ({ ...prev, tire_life: e.target.value }))}
+                            className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-violet-500 bg-slate-50/50"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5" title="Battery Base Life (cycles)">Battery (cyc)</label>
+                          <input
+                            type="number"
+                            value={newVehicle.battery_life}
+                            onChange={e => setNewVehicle(prev => ({ ...prev, battery_life: e.target.value }))}
+                            className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-violet-500 bg-slate-50/50"
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-1.5" title="Clutch Base Life (km)">Clutch (km)</label>
+                          <input
+                            type="number"
+                            value={newVehicle.clutch_life}
+                            onChange={e => setNewVehicle(prev => ({ ...prev, clutch_life: e.target.value }))}
+                            className="w-full rounded-xl border border-slate-200 px-2.5 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-violet-500 bg-slate-50/50"
+                            required
+                          />
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="flex items-center gap-2.5 pt-2">
                       <input
                         type="checkbox"
@@ -1224,6 +1425,8 @@ export default function DeviceSimulator({
                 </button>
               </div>
             </div>
+            </>
+          )}
 
           </div>
         </div>

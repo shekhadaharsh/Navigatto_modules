@@ -41,9 +41,16 @@ const DbResultTable = ({ columns, rows }) => {
                       <span className="text-slate-400 italic">null</span>
                     ) : typeof cell === 'boolean' ? (
                       cell ? 'True' : 'False'
-                    ) : (
-                      String(cell)
-                    )}
+                    ) : (() => {
+                      const cellStr = String(cell).trim();
+                      if (/^-?\d+\.\d+$/.test(cellStr)) {
+                        return parseFloat(cellStr).toFixed(2);
+                      }
+                      if (typeof cell === 'number') {
+                        return Number.isInteger(cell) ? cell : cell.toFixed(2);
+                      }
+                      return cellStr;
+                    })()}
                   </td>
                 ))}
               </tr>
@@ -211,6 +218,20 @@ const Chatbot = () => {
       };
 
       setMessages((prev) => [...prev, botResponse]);
+
+      // Dispatch log event for the Simulator Console/CMD tab
+      window.dispatchEvent(new CustomEvent('chatbot-log', {
+        detail: {
+          id: Date.now(),
+          timestamp: new Date().toLocaleTimeString(),
+          query: queryText,
+          rewritten: data.rewritten_query || queryText,
+          sql: data.sql,
+          status: data.status,
+          error: data.status === 'error' || data.status === 'db_error' ? data.message : null,
+          rowsCount: data.rows ? data.rows.length : 0
+        }
+      }));
     } catch (error) {
       console.error('Chatbot API error:', error);
       const errorMsg = {
@@ -221,6 +242,20 @@ const Chatbot = () => {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages((prev) => [...prev, errorMsg]);
+
+      // Dispatch log event for errors
+      window.dispatchEvent(new CustomEvent('chatbot-log', {
+        detail: {
+          id: Date.now(),
+          timestamp: new Date().toLocaleTimeString(),
+          query: queryText,
+          rewritten: queryText,
+          sql: null,
+          status: 'error',
+          error: error.message || 'Error connecting to database helper.',
+          rowsCount: 0
+        }
+      }));
     } finally {
       setIsLoading(false);
     }
@@ -272,7 +307,7 @@ const Chatbot = () => {
 
       {/* Chat Window - Enlarged horizontally & vertically for database content */}
       <div
-        className={`fixed bottom-4 right-6 z-50 w-[580px] max-w-[95vw] h-[85vh] max-h-[850px] bg-white rounded-3xl shadow-premium border border-slate-200/60 flex flex-col overflow-hidden transition-all duration-500 transform origin-bottom-right ${
+        className={`fixed bottom-4 right-6 z-50 w-[450px] max-w-[95vw] h-[85vh] max-h-[850px] bg-white rounded-3xl shadow-premium border border-slate-200/60 flex flex-col overflow-hidden transition-all duration-500 transform origin-bottom-right ${
           isOpen ? 'scale-100 opacity-100 translate-y-0' : 'scale-50 opacity-0 translate-y-10 pointer-events-none'
         }`}
       >
@@ -339,9 +374,6 @@ const Chatbot = () => {
                   >
                     {isBot ? formatMessageText(msg.text) : msg.text}
 
-                    {/* Collapsible SQL Query (if generated) */}
-                    {isBot && msg.sql && <SqlViewer sql={msg.sql} />}
-
                     {/* Data Table (if rows exist) */}
                     {isBot && msg.columns && msg.rows && msg.rows.length > 0 && (
                       <DbResultTable columns={msg.columns} rows={msg.rows} />
@@ -355,15 +387,18 @@ const Chatbot = () => {
                           Suggested Queries
                         </span>
                         <div className="flex flex-col gap-1.5">
-                          {msg.suggestions.map((sug, idx) => (
-                            <button
-                              key={idx}
-                              onClick={() => handleSendMessage(sug)}
-                              className="text-left w-full px-3 py-2 text-xs font-semibold text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100/70 border border-brand-100 rounded-xl transition-all cursor-pointer outline-none"
-                            >
-                              💡 {sug}
-                            </button>
-                          ))}
+                          {msg.suggestions.map((sug, idx) => {
+                            const sugClean = sug.replace(/\*/g, "");
+                            return (
+                              <button
+                                key={idx}
+                                onClick={() => handleSendMessage(sugClean)}
+                                className="text-left w-full px-3 py-2 text-xs font-semibold text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100/70 border border-brand-100 rounded-xl transition-all cursor-pointer outline-none"
+                              >
+                                💡 {sugClean}
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
                     )}
