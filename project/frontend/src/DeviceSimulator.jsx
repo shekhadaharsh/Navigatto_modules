@@ -42,27 +42,40 @@ export default function DeviceSimulator({
     '[System] Ready for manual inputs and live device telemetry simulation.'
   ]);
 
-  // Dynamic list of vehicles, pre-seeded from drivers
-  const [vehicles, setVehicles] = useState(() => {
-    const initialVehicles = drivers.map(d => ({
-      vehicle_id: d.vehicle_id || `VH0${d.driver_id.replace('DR', '')}`,
-      reg_no: `GJ-01-XX-${Math.floor(1000 + Math.random() * 9000)}`,
-      vehicle_name: `${d.vehicle_type || 'Mini Truck'} Engine`,
-      vehicle_type: d.vehicle_type || 'Mini Truck',
-      make: 'Tata',
-      model: '2024',
-      is_active: true
-    }));
-    const uniqueVehicles = [];
-    const seen = new Set();
-    for (const v of initialVehicles) {
-      if (!seen.has(v.vehicle_id)) {
-        seen.add(v.vehicle_id);
-        uniqueVehicles.push(v);
+  // Vehicles list — loaded from DB when live, or derived from drivers in mock mode
+  const [vehicles, setVehicles] = useState([]);
+
+  // Load vehicles from DB (live mode) or seed from drivers (mock mode)
+  useEffect(() => {
+    if (isUsingMock) {
+      // Derive vehicles from drivers list for mock mode
+      const derived = drivers.map(d => ({
+        vehicle_id: d.vehicle_id || `VH0${d.driver_id.replace('DR', '')}`,
+        reg_no: `GJ-01-XX-${Math.floor(1000 + Math.random() * 9000)}`,
+        vehicle_name: `${d.vehicle_type || 'Mini Truck'} Engine`,
+        vehicle_type: d.vehicle_type || 'Mini Truck',
+        make: 'Tata',
+        model: '2024',
+        is_active: true
+      }));
+      const unique = [];
+      const seen = new Set();
+      for (const v of derived) {
+        if (!seen.has(v.vehicle_id)) { seen.add(v.vehicle_id); unique.push(v); }
       }
+      setVehicles(unique);
+    } else {
+      // Fetch vehicles from DB via API
+      fetch('/api/simulation/vehicles')
+        .then(r => r.ok ? r.json() : [])
+        .then(data => {
+          if (data && data.length > 0) {
+            setVehicles(data);
+          }
+        })
+        .catch(() => {}); // Silently ignore if API not ready yet
     }
-    return uniqueVehicles;
-  });
+  }, [isUsingMock, drivers]);
 
   // Trip simulation state
   const [simForm, setSimForm] = useState({
@@ -223,12 +236,15 @@ export default function DeviceSimulator({
             if (d.driver_id === randomDriver.driver_id) {
               const currentTrips = d.total_trips + 1;
               const newAvg = parseFloat(((d.avg_score * d.total_trips + computedScore) / currentTrips).toFixed(1));
+              const prevDist = d.total_distance ?? d.total_distance_km ?? 0.0;
+              const newDist = parseFloat((prevDist + distance).toFixed(2));
               return {
                 ...d,
                 total_trips: currentTrips,
                 avg_score: newAvg,
                 ml_score: newAvg,
-                total_distance: parseFloat((d.total_distance + distance).toFixed(2))
+                total_distance: newDist,
+                total_distance_km: newDist
               };
             }
             return d;
@@ -347,12 +363,15 @@ export default function DeviceSimulator({
           if (d.driver_id === simForm.driver_id) {
             const currentTrips = d.total_trips + 1;
             const newAvg = parseFloat(((d.avg_score * d.total_trips + computedScore) / currentTrips).toFixed(1));
+            const prevDist = d.total_distance ?? d.total_distance_km ?? 0.0;
+            const newDist = parseFloat((prevDist + parseFloat(simForm.distance_km)).toFixed(2));
             return {
               ...d,
               total_trips: currentTrips,
               avg_score: newAvg,
               ml_score: newAvg,
-              total_distance: parseFloat((d.total_distance + parseFloat(simForm.distance_km)).toFixed(2))
+              total_distance: newDist,
+              total_distance_km: newDist
             };
           }
           return d;
@@ -431,108 +450,176 @@ export default function DeviceSimulator({
     }
   };
 
-  // Handler for adding driver manually (in memory for now, setup for DB later)
-  const handleAddDriver = (e) => {
+  // Handler for adding driver manually
+  const handleAddDriver = async (e) => {
     e.preventDefault();
     if (!newDriver.name) {
-      alert("Please enter driver name");
+      alert('Please enter driver name');
       return;
     }
-    
+
     setIsSimSubmitting(true);
-    setSimStatusMsg('Adding driver...');
+    setSimStatusMsg('Registering driver...');
     const timestampStr = new Date().toLocaleTimeString();
 
-    setTimeout(() => {
-      const driverId = newDriver.driver_id || `DR${(drivers.length + 1).toString().padStart(3, '0')}`;
-      const driverObj = {
-        driver_id: driverId,
-        name: newDriver.name,
-        driver_name: newDriver.name,
-        vehicle_type: 'Mini Truck',
-        vehicle_id: `VH0${driverId.replace('DR', '')}`,
-        total_trips: 0,
-        total_distance: 0,
-        total_distance_km: 0,
-        avg_speed_kmh: 0,
-        avatar_color: getDriverColor(driverId),
-        avg_score: 100.0,
-        ml_score: 100.0,
-        rule_based_score: 100.0,
-        total_odometer_km: 0,
-        engine_total_hours: 0,
-        is_active: newDriver.is_active
-      };
-
-      setDrivers(prev => [...prev, driverObj]);
-      
-      setSimLogs(prev => [
-        `[${timestampStr}] 👤 Added Driver: ${newDriver.name} (${driverId}). (In-Memory)`,
-        ...prev
-      ].slice(0, 20));
-
-      setIsSimSubmitting(false);
-      setSimStatusMsg('✓ Driver added successfully!');
-      
-      // Reset form
-      setNewDriver({
-        driver_id: '',
-        name: '',
-        vehicle_type: 'Mini Truck',
-        vehicle_id: '',
-        is_active: true
-      });
-
-      setTimeout(() => setSimStatusMsg(''), 3000);
-    }, 600);
+    if (isUsingMock) {
+      // In-memory mock path (unchanged)
+      setTimeout(() => {
+        const driverId = newDriver.driver_id || `DR${(drivers.length + 1).toString().padStart(3, '0')}`;
+        const driverObj = {
+          driver_id: driverId,
+          name: newDriver.name,
+          driver_name: newDriver.name,
+          vehicle_type: 'Mini Truck',
+          vehicle_id: `VH0${driverId.replace('DR', '')}`,
+          total_trips: 0,
+          total_distance: 0,
+          total_distance_km: 0,
+          avg_speed_kmh: 0,
+          avatar_color: getDriverColor(driverId),
+          avg_score: 100.0,
+          ml_score: 100.0,
+          rule_based_score: 100.0,
+          total_odometer_km: 0,
+          engine_total_hours: 0,
+          is_active: newDriver.is_active
+        };
+        setDrivers(prev => [...prev, driverObj]);
+        setSimLogs(prev => [
+          `[${timestampStr}] 👤 [Mock] Added Driver: ${newDriver.name} (${driverId}).`,
+          ...prev
+        ].slice(0, 20));
+        setIsSimSubmitting(false);
+        setSimStatusMsg('✓ Driver added (In-Memory)!');
+        setNewDriver({ driver_id: '', name: '', vehicle_type: 'Mini Truck', vehicle_id: '', is_active: true });
+        setTimeout(() => setSimStatusMsg(''), 3000);
+      }, 600);
+    } else {
+      // Live DB path
+      try {
+        const response = await fetch('/api/simulation/add-driver', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            driver_id: newDriver.driver_id,
+            name: newDriver.name,
+            is_active: newDriver.is_active
+          })
+        });
+        const data = await response.json();
+        if (response.ok) {
+          setSimLogs(prev => [
+            `[${timestampStr}] 👤 [DB] Registered Driver: ${newDriver.name} (${newDriver.driver_id}).`,
+            ...prev
+          ].slice(0, 20));
+          setSimStatusMsg('✓ Driver registered in Database!');
+          setNewDriver({ driver_id: '', name: '', vehicle_type: 'Mini Truck', vehicle_id: '', is_active: true });
+          // Refresh drivers list from DB
+          const res = await fetch('/api/drivers/');
+          if (res.ok) {
+            const driverData = await res.json();
+            setDrivers(driverData.map(d => ({
+              ...d,
+              name: d.driver_name || d.name || `Driver ${d.driver_id}`,
+              avatar_color: getDriverColor(d.driver_id),
+              vehicle_type: d.vehicle_type || 'Mini Truck',
+              vehicle_id: d.vehicle_id || `VH0${d.driver_id.replace('DR', '')}`,
+              total_distance_km: d.total_distance_km ?? d.total_distance ?? 0.0
+            })));
+          }
+        } else if (response.status === 409) {
+          setSimStatusMsg(`✗ Driver ID '${newDriver.driver_id}' already exists.`);
+          setSimLogs(prev => [`[${timestampStr}] ⚠️ Driver ID conflict: ${data.detail}`, ...prev].slice(0, 20));
+        } else {
+          setSimStatusMsg('✗ Failed to register driver.');
+          setSimLogs(prev => [`[${timestampStr}] ❌ API error: ${data.detail || response.status}`, ...prev].slice(0, 20));
+        }
+      } catch (err) {
+        setSimStatusMsg('✗ API offline. Check backend connection.');
+        setSimLogs(prev => [`[${timestampStr}] ⚠️ Backend connection failed.`, ...prev].slice(0, 20));
+      } finally {
+        setIsSimSubmitting(false);
+        setTimeout(() => setSimStatusMsg(''), 4000);
+      }
+    }
   };
 
-  // Handler for adding vehicle manually (in memory for now)
-  const handleAddVehicle = (e) => {
+  // Handler for adding vehicle
+  const handleAddVehicle = async (e) => {
     e.preventDefault();
     if (!newVehicle.vehicle_id || !newVehicle.reg_no) {
-      alert("Please fill in Vehicle ID and Registration Number");
+      alert('Please fill in Vehicle ID and Registration Number');
       return;
     }
 
     setIsSimSubmitting(true);
-    setSimStatusMsg('Adding vehicle...');
+    setSimStatusMsg('Registering vehicle...');
     const timestampStr = new Date().toLocaleTimeString();
 
-    setTimeout(() => {
-      const vehicleObj = {
-        vehicle_id: newVehicle.vehicle_id,
-        reg_no: newVehicle.reg_no,
-        vehicle_name: newVehicle.vehicle_name || `${newVehicle.make} ${newVehicle.model}`,
-        vehicle_type: newVehicle.vehicle_type,
-        make: newVehicle.make || 'Tata',
-        model: newVehicle.model || '2024',
-        is_active: newVehicle.is_active
-      };
-
-      setVehicles(prev => [...prev, vehicleObj]);
-
-      setSimLogs(prev => [
-        `[${timestampStr}] 🚚 Registered Vehicle: ${vehicleObj.vehicle_name} [ID: ${vehicleObj.vehicle_id}] [Reg: ${vehicleObj.reg_no}] Type: ${vehicleObj.vehicle_type} (In-Memory)`,
-        ...prev
-      ].slice(0, 20));
-
-      setIsSimSubmitting(false);
-      setSimStatusMsg('✓ Vehicle registered successfully!');
-
-      // Reset form
-      setNewVehicle({
-        vehicle_id: '',
-        reg_no: '',
-        vehicle_name: '',
-        vehicle_type: 'Mini Truck',
-        make: '',
-        model: '',
-        is_active: true
-      });
-
-      setTimeout(() => setSimStatusMsg(''), 3000);
-    }, 600);
+    if (isUsingMock) {
+      // In-memory mock path (unchanged)
+      setTimeout(() => {
+        const vehicleObj = {
+          vehicle_id: newVehicle.vehicle_id,
+          reg_no: newVehicle.reg_no,
+          vehicle_name: newVehicle.vehicle_name || `${newVehicle.make} ${newVehicle.model}`,
+          vehicle_type: newVehicle.vehicle_type,
+          make: newVehicle.make || 'Tata',
+          model: newVehicle.model || '2024',
+          is_active: newVehicle.is_active
+        };
+        setVehicles(prev => [...prev, vehicleObj]);
+        setSimLogs(prev => [
+          `[${timestampStr}] 🚚 [Mock] Registered Vehicle: ${vehicleObj.vehicle_name} [${vehicleObj.vehicle_id}] (In-Memory)`,
+          ...prev
+        ].slice(0, 20));
+        setIsSimSubmitting(false);
+        setSimStatusMsg('✓ Vehicle registered (In-Memory)!');
+        setNewVehicle({ vehicle_id: '', reg_no: '', vehicle_name: '', vehicle_type: 'Mini Truck', make: '', model: '', is_active: true });
+        setTimeout(() => setSimStatusMsg(''), 3000);
+      }, 600);
+    } else {
+      // Live DB path
+      try {
+        const response = await fetch('/api/simulation/add-vehicle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            vehicle_id:   newVehicle.vehicle_id,
+            reg_no:       newVehicle.reg_no,
+            vehicle_name: newVehicle.vehicle_name || '',
+            vehicle_type: newVehicle.vehicle_type,
+            make:         newVehicle.make || '',
+            model:        newVehicle.model || '',
+            is_active:    newVehicle.is_active
+          })
+        });
+        const data = await response.json();
+        if (response.ok) {
+          setSimLogs(prev => [
+            `[${timestampStr}] 🚚 [DB] Registered Vehicle: ${newVehicle.vehicle_id} [${newVehicle.reg_no}] Type: ${newVehicle.vehicle_type}`,
+            ...prev
+          ].slice(0, 20));
+          setSimStatusMsg('✓ Vehicle registered in Database!');
+          setNewVehicle({ vehicle_id: '', reg_no: '', vehicle_name: '', vehicle_type: 'Mini Truck', make: '', model: '', is_active: true });
+          // Refresh vehicles list from DB
+          const res = await fetch('/api/simulation/vehicles');
+          if (res.ok) setVehicles(await res.json());
+        } else if (response.status === 409) {
+          setSimStatusMsg(`✗ Vehicle ID '${newVehicle.vehicle_id}' already exists.`);
+          setSimLogs(prev => [`[${timestampStr}] ⚠️ Vehicle ID conflict: ${data.detail}`, ...prev].slice(0, 20));
+        } else {
+          setSimStatusMsg('✗ Failed to register vehicle.');
+          setSimLogs(prev => [`[${timestampStr}] ❌ API error: ${data.detail || response.status}`, ...prev].slice(0, 20));
+        }
+      } catch (err) {
+        setSimStatusMsg('✗ API offline. Check backend connection.');
+        setSimLogs(prev => [`[${timestampStr}] ⚠️ Backend connection failed.`, ...prev].slice(0, 20));
+      } finally {
+        setIsSimSubmitting(false);
+        setTimeout(() => setSimStatusMsg(''), 4000);
+      }
+    }
   };
 
   return (
@@ -636,7 +723,7 @@ export default function DeviceSimulator({
                       1. Manual Trip Telemetry Injector
                     </h3>
 
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 gap-4">
                       <div>
                         <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Driver Context (Select Driver)</label>
                         <select
@@ -679,20 +766,6 @@ export default function DeviceSimulator({
                               {v.vehicle_name || v.vehicle_id} ({v.vehicle_id})
                             </option>
                           ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1.5">Vehicle Type for Trip</label>
-                        <select
-                          value={simForm.vehicle_type}
-                          onChange={e => setSimForm(prev => ({ ...prev, vehicle_type: e.target.value }))}
-                          className="w-full rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-violet-500 bg-slate-50/50"
-                          required
-                        >
-                          <option value="Mini Truck">Mini Truck</option>
-                          <option value="Medium Cargo">Medium Cargo</option>
-                          <option value="Heavy Cargo Truck">Heavy Cargo Truck</option>
-                          <option value="Pickup Truck">Pickup Truck</option>
                         </select>
                       </div>
                     </div>
