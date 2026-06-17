@@ -136,11 +136,11 @@ replay_manager = ReplayManager()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Pre-load chatbot schema and embedding models on startup
-    try:
-        from chatbot_module.schema_service import load_schema
-        load_schema()
-    except Exception as e:
-        print(f"[Lifespan] Error pre-loading schema & models: {e}")
+    # try:
+    #     from chatbot_module.schema_service import load_schema
+    #     load_schema()
+    # except Exception as e:
+    #     print(f"[Lifespan] Error pre-loading schema & models: {e}")
 
     if not ENABLE_MANUAL_REPLAY_CONTROL:
         await replay_manager.start()
