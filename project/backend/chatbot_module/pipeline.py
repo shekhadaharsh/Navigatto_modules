@@ -69,6 +69,27 @@ async def process_query(
 
     print(f"[ChatbotPipeline] Received query: '{query}'")
 
+    # Quick check for greetings/small talk
+    lower_query = query.strip().lower()
+    # Handle single words or short phrases
+    greetings_set = {"hi", "hello", "hey", "ok", "okay", "okey", "thanks", "thank you", "ji", "ha", "haa"}
+    help_phrases = ["how can you help", "what can you do", "help me", "how you can help"]
+    
+    # Check if exact match to greeting, or if it contains a help phrase
+    if lower_query in greetings_set or any(hp in lower_query for hp in help_phrases):
+        def log_and_return_greeting(res):
+            log_chatbot_transaction(query, query, None, "greeting", None, 0)
+            return res
+        return log_and_return_greeting({
+            "status": "greeting",
+            "message": "Hello! 🚀 I am your FleetIQ AI Assistant. I can help you analyze vehicles, drivers, and trips.\n\nAsk me anything, like:\n• *Which driver has the most trips?*\n• *Any critical maintenance alerts?*\n• *Show top 5 vehicles by fuel consumption.*",
+            "sql": None,
+            "columns": [],
+            "rows": [],
+            "suggestions": [],
+            "rewritten_query": query
+        })
+
     # Stage 1: Context Rewrite using History
     rewritten_query = await llm_service.rewrite_query_with_history(query, history)
     if rewritten_query != query:
