@@ -13,6 +13,7 @@ import os
 #
 # -> If you are running it for the very first time, use this instead:
 #      docker run -d --name my-redis -p 6379:6379 redis
+
 # ==============================================================================
 
 def main():
@@ -69,3 +70,4 @@ if __name__ == "__main__":
 
 
 #celery -A maintenance_module.celery_app worker --loglevel=info -P solo
+#C:\Python313\python.exe -m uvicorn main:app --reload --port 8000
