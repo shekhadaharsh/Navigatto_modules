@@ -140,7 +140,7 @@ const Chatbot = () => {
     {
       id: 1,
       sender: 'bot',
-      text: 'Hello! I am your FleetIQ Text-to-SQL Assistant. I can query our SQL Server database to fetch insights about journeys, drivers, vehicles, maintenance status, and telemetry data.\n\nTry asking me questions like:\n• *Which driver has completed the most trips?*\n• *Show me recent fuel theft alerts.*\n• *What is the average brake wear rating?*',
+      text: 'Welcome! 🚀 I am your FleetIQ AI Assistant. I can help you analyze vehicles, drivers, and trips.\n\nAsk me anything, like:\n• *Which driver has the most trips?*\n• *Any critical maintenance alerts?*\n• *Show top 5 vehicles by fuel consumption.*',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     },
   ]);
