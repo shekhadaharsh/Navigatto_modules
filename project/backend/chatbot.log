@@ -1,0 +1,343 @@
+=== Chatbot Logger Session Initialized ===
+
+======================================================================
+[2026-06-16 15:44:00] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: give me list of vehicle
+STANDALONE REWRITE: give me list of vehicle
+GENERATED T-SQL: SELECT TOP 1000 v.id, v.reg_no, v.vehicle_name, v.make, v.model, v.fuel_type 
+FROM vehicles v 
+WHERE v.is_active = 1 
+ORDER BY v.vehicle_name ASC
+STATUS: success
+ROWS RETURNED: 22
+======================================================================
+
+======================================================================
+[2026-06-16 15:46:44] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: which vehicle have maximum harsh braking events
+STANDALONE REWRITE: Which vehicle in our fleet of 22 vehicles from manufacturers such as Ashok Leyland, BharatBenz, and Eicher, has the maximum number of harsh braking events?
+GENERATED T-SQL: SELECT TOP 1 v.vehicle_name, COUNT(bwe.id) AS TotalBrakeEvents 
+FROM vehicles v 
+INNER JOIN brake_wear_events bwe ON v.id = bwe.vehicle_id 
+INNER JOIN journeys j ON v.id = j.vehicle_id 
+WHERE bwe.event_type = 'harsh_brake' 
+GROUP BY v.vehicle_name 
+ORDER BY TotalBrakeEvents DESC
+STATUS: success
+ROWS RETURNED: 0
+======================================================================
+
+======================================================================
+[2026-06-16 15:47:23] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: which vehicle have maximum harsh escellring events
+STANDALONE REWRITE: Which vehicle in our fleet has the maximum harsh acceleration events
+GENERATED T-SQL: SELECT TOP 1 v.vehicle_name, SUM(j.accel_events) AS TotalAccelEvents 
+FROM vehicles v 
+INNER JOIN journeys j ON v.id = j.vehicle_id 
+GROUP BY v.vehicle_name 
+ORDER BY TotalAccelEvents DESC
+STATUS: success
+ROWS RETURNED: 1
+======================================================================
+
+======================================================================
+[2026-06-16 15:56:20] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: which vehicle have most brake event
+STANDALONE REWRITE: Which vehicle has the most brake events in our fleet.
+GENERATED T-SQL: SELECT TOP 1 v.vehicle_name, SUM(b.brake_count) AS TotalBrakeEvents 
+FROM brake_wear_events b 
+INNER JOIN vehicles v ON b.vehicle_id = v.id 
+GROUP BY v.vehicle_name 
+ORDER BY TotalBrakeEvents DESC
+STATUS: success
+ROWS RETURNED: 1
+======================================================================
+
+======================================================================
+[2026-06-16 16:36:33] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: give me all driver names
+STANDALONE REWRITE: give me all driver names
+GENERATED T-SQL: N/A
+STATUS: schema_error
+ROWS RETURNED: 0
+ERROR/TRACEBACK: Error loading database schema: 'QdrantClient' object has no attribute 'search'
+======================================================================
+
+======================================================================
+[2026-06-16 16:45:13] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: ih
+STANDALONE REWRITE: ih
+GENERATED T-SQL: N/A
+STATUS: out_of_scope
+ROWS RETURNED: 0
+======================================================================
+
+======================================================================
+[2026-06-16 16:45:39] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: how may break events
+STANDALONE REWRITE: What are the number of break events in the fleet.
+GENERATED T-SQL: SELECT SUM(j.brake_events) AS TotalBrakeEvents FROM journeys j
+STATUS: success
+ROWS RETURNED: 1
+======================================================================
+
+======================================================================
+[2026-06-16 16:52:45] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: can you give me top 3
+STANDALONE REWRITE: What are the top 3 vehicles or drivers with the most brake events in the fleet?
+GENERATED T-SQL: SELECT * FROM (
+  SELECT TOP 3 v.vehicle_name, COUNT(bwe.id) AS TotalBrakeEvents 
+  FROM vehicles v 
+  INNER JOIN brake_wear_events bwe ON v.id = bwe.vehicle_id 
+  GROUP BY v.vehicle_name 
+  ORDER BY TotalBrakeEvents DESC
+) AS vehicle_brake_events
+UNION ALL
+SELECT * FROM (
+  SELECT TOP 3 d.driver_name, COUNT(bwe.id) AS TotalBrakeEvents 
+  FROM drivers d 
+  INNER JOIN journeys j ON d.driver_id = j.driver_id 
+  INNER JOIN brake_wear_events bwe ON j.trip_id = bwe.trip_id 
+  GROUP BY d.driver_name 
+  ORDER BY TotalBrakeEvents DESC
+) AS driver_brake_events
+STATUS: success
+ROWS RETURNED: 3
+======================================================================
+
+======================================================================
+[2026-06-16 16:52:57] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: driver name
+STANDALONE REWRITE: What are the names of the drivers associated with the top 3 vehicles having the most brake events, namely the Eicher Pro 6031, Mahindra Bolero Maxi, and Ashok Leyland Ecomet 1415.
+GENERATED T-SQL: SELECT TOP 3 d.driver_name 
+FROM drivers d 
+INNER JOIN journeys j ON d.driver_id = j.driver_id 
+INNER JOIN vehicles v ON j.vehicle_id = v.id 
+INNER JOIN brake_wear_events bwe ON v.id = bwe.vehicle_id 
+WHERE v.vehicle_name IN ('Eicher Pro 6031', 'Mahindra Bolero Maxi', 'Ashok Leyland Ecomet 1415') 
+GROUP BY d.driver_name 
+ORDER BY COUNT(bwe.id) DESC
+STATUS: success
+ROWS RETURNED: 3
+======================================================================
+
+======================================================================
+[2026-06-16 17:02:41] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: okey
+STANDALONE REWRITE: Show me the current status of the fleet.
+GENERATED T-SQL: SELECT 
+    v.reg_no, 
+    v.vehicle_name, 
+    v.make, 
+    v.model, 
+    v.fuel_type, 
+    v.engine_cc, 
+    v.clutch_type, 
+    v.tire_type, 
+    v.battery_ah, 
+    v.is_active, 
+    cws.health_score, 
+    cws.rul, 
+    cws.accumulated_wear, 
+    ma.message, 
+    ma.alert_level
+FROM 
+    vehicles v
+INNER JOIN 
+    component_wear_state cws ON v.id = cws.vehicle_id
+LEFT JOIN 
+    maintenance_alerts ma ON v.id = ma.vehicle_id
+ORDER BY 
+    v.reg_no;
+STATUS: success
+ROWS RETURNED: 400
+======================================================================
+
+======================================================================
+[2026-06-16 18:01:37] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: hi
+STANDALONE REWRITE: hi
+GENERATED T-SQL: N/A
+STATUS: out_of_scope
+ROWS RETURNED: 0
+======================================================================
+
+======================================================================
+[2026-06-16 18:07:30] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: hi
+STANDALONE REWRITE: hi
+GENERATED T-SQL: N/A
+STATUS: greeting
+ROWS RETURNED: 0
+======================================================================
+
+======================================================================
+[2026-06-16 18:07:50] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: hi
+STANDALONE REWRITE: hi
+GENERATED T-SQL: N/A
+STATUS: greeting
+ROWS RETURNED: 0
+======================================================================
+
+======================================================================
+[2026-06-16 18:11:03] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: hi
+STANDALONE REWRITE: hi
+GENERATED T-SQL: N/A
+STATUS: greeting
+ROWS RETURNED: 0
+======================================================================
+
+======================================================================
+[2026-06-16 18:11:19] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: how you can help me
+STANDALONE REWRITE: how you can help me
+GENERATED T-SQL: N/A
+STATUS: greeting
+ROWS RETURNED: 0
+======================================================================
+
+======================================================================
+[2026-06-16 18:11:56] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: give me list of fule type
+STANDALONE REWRITE: What are the different fuel types of vehicles in my fleet?
+GENERATED T-SQL: SELECT DISTINCT ISNULL(v.fuel_type, 'N/A') AS FuelType FROM vehicles v
+STATUS: success
+ROWS RETURNED: 2
+======================================================================
+
+======================================================================
+[2026-06-16 18:40:43] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: give me list of ml
+STANDALONE REWRITE: give me list of ml
+GENERATED T-SQL: N/A
+STATUS: out_of_scope
+ROWS RETURNED: 0
+======================================================================
+
+======================================================================
+[2026-06-16 18:40:56] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: give me list of drivers
+STANDALONE REWRITE: Show me the list of drivers.
+GENERATED T-SQL: SELECT ISNULL(d.driver_id, 'N/A') AS DriverID, ISNULL(d.driver_name, 'N/A') AS DriverName, ISNULL(CAST(d.is_active AS NVARCHAR(50)), 'N/A') AS IsActive 
+FROM drivers d
+STATUS: success
+ROWS RETURNED: 22
+======================================================================
+
+======================================================================
+[2026-06-16 18:41:27] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: which driver score is very low
+STANDALONE REWRITE: What is the driver score for each of the 22 active drivers, specifically identifying those with very low scores?
+GENERATED T-SQL: SELECT TOP 22 d.driver_name, AVG(js.driver_score) AS AvgDriverScore 
+FROM drivers d 
+INNER JOIN journeys j ON d.driver_id = j.driver_id 
+INNER JOIN journey_scores js ON j.trip_id = js.trip_id 
+WHERE d.is_active = 1 
+GROUP BY d.driver_name 
+ORDER BY AvgDriverScore ASC;
+STATUS: success
+ROWS RETURNED: 22
+======================================================================
+
+======================================================================
+[2026-06-16 18:41:58] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: give me only lowest driver name
+STANDALONE REWRITE: Give me the name of the driver with the lowest score among the 22 active drivers.
+GENERATED T-SQL: SELECT TOP 1 d.driver_name 
+FROM drivers d 
+INNER JOIN journey_scores js ON d.driver_id = js.driver_id 
+WHERE d.is_active = 1 
+ORDER BY js.driver_score ASC;
+STATUS: success
+ROWS RETURNED: 1
+======================================================================
+
+======================================================================
+[2026-06-16 18:42:21] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: and what is socre
+STANDALONE REWRITE: What is Ramesh Patel's driver score?
+GENERATED T-SQL: SELECT ISNULL(js.driver_score, 0) AS DriverScore 
+FROM journey_scores js 
+INNER JOIN drivers d ON js.driver_id = d.driver_id 
+WHERE d.driver_name = 'Ramesh Patel'
+STATUS: success
+ROWS RETURNED: 247
+======================================================================
+
+======================================================================
+[2026-06-16 18:42:53] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: which driver has lovest score
+STANDALONE REWRITE: which driver has lovest score
+GENERATED T-SQL: SELECT TOP 1 d.driver_name, js.driver_score 
+FROM journey_scores js 
+INNER JOIN drivers d ON js.driver_id = d.driver_id 
+ORDER BY js.driver_score ASC
+STATUS: success
+ROWS RETURNED: 1
+======================================================================
+
+======================================================================
+[2026-06-16 18:43:10] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: are you sure ?
+STANDALONE REWRITE: Are you sure that Ramesh Patel is the driver with the lowest score of 21.29 ?
+GENERATED T-SQL: SELECT TOP 1 d.driver_name, js.driver_score 
+FROM journey_scores js 
+INNER JOIN drivers d ON js.driver_id = d.driver_id 
+WHERE js.driver_score = 21.29 
+AND d.driver_name = 'Ramesh Patel' 
+ORDER BY js.driver_score ASC
+STATUS: success
+ROWS RETURNED: 1
+======================================================================
+
+======================================================================
+[2026-06-16 18:43:46] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: what the score of test driver
+STANDALONE REWRITE: What is the driver_score of the test driver ?
+GENERATED T-SQL: SELECT js.driver_score 
+FROM journey_scores js 
+INNER JOIN drivers d ON js.driver_id = d.driver_id 
+WHERE d.driver_name = 'test driver'
+STATUS: success
+ROWS RETURNED: 11
+======================================================================
+
+======================================================================
+[2026-06-16 18:44:06] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: what the score of driver 1
+STANDALONE REWRITE: What is the score of the first test driver among the 11 drivers with scores ranging from 34.0 to 99.64.
+GENERATED T-SQL: SELECT TOP 1 js.driver_score 
+FROM journey_scores js 
+INNER JOIN drivers d ON js.driver_id = d.driver_id 
+WHERE js.driver_score BETWEEN 34.0 AND 99.64 
+ORDER BY d.driver_id
+STATUS: success
+ROWS RETURNED: 1
+======================================================================

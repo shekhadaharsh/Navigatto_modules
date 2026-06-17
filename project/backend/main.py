@@ -15,6 +15,7 @@ from driver_module.routes import router as driver_router
 from fuel_module.routes import router as fuel_router
 from maintenance_module.routes import router as maint_router
 from simulation_module.routes import router as sim_router
+from chatbot_module.routes import router as chatbot_router
 
 # ─────────────────────────────────────────
 # Create DB tables on startup
@@ -134,6 +135,13 @@ replay_manager = ReplayManager()
 # ─────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Pre-load chatbot schema and embedding models on startup
+    try:
+        from chatbot_module.schema_service import load_schema
+        load_schema()
+    except Exception as e:
+        print(f"[Lifespan] Error pre-loading schema & models: {e}")
+
     if not ENABLE_MANUAL_REPLAY_CONTROL:
         await replay_manager.start()
     else:
@@ -173,6 +181,7 @@ app.include_router(driver_router)
 app.include_router(fuel_router)
 app.include_router(maint_router)
 app.include_router(sim_router)
+app.include_router(chatbot_router)
 
 
 

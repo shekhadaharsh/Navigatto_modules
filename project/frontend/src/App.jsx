@@ -89,8 +89,6 @@ function TheftLocationMap({ lat, lng }) {
       <div style={{ fontSize: "11px", color: "#64748b", padding: "4px 8px", background: "#f8fafc", borderTop: "1px solid #e2e8f0" }}>
         📍 {lat.toFixed(5)}, {lng.toFixed(5)}
       </div>
-
-      <Chatbot />
     </div>
   );
 }
@@ -2237,6 +2235,8 @@ export default function App() {
                                         const colorClass = isCrit ? 'text-rose-600 bg-rose-50 border-rose-100' : isWarn ? 'text-amber-600 bg-amber-50 border-amber-100' : 'text-emerald-600 bg-emerald-50 border-emerald-100';
                                         const progressColor = isCrit ? 'from-rose-500 to-red-600' : isWarn ? 'from-amber-500 to-orange-500' : 'from-emerald-500 to-teal-500';
 
+                                        const unitText = { brake: 'km', tire: 'km', engine: 'hrs', battery: 'cycles', clutch: 'km' }[c.component] || 'units';
+
                                         return (
                                           <div key={ci} className="bg-slate-50/70 border border-slate-200/40 p-3 rounded-2xl flex items-center gap-3 hover:bg-slate-50 transition-all">
                                             <div className="p-2 bg-white rounded-xl shadow-sm text-slate-500 shrink-0">
@@ -2259,8 +2259,8 @@ export default function App() {
                                               ></div>
                                             </div>
                                             <div className="flex justify-between text-[9px] text-slate-400 font-bold">
-                                              <span>RUL: <strong className="text-slate-600 font-extrabold">{Math.round(c.rul).toLocaleString()} units</strong></span>
-                                              <span>Wear: <strong className="text-slate-600 font-extrabold">{parseFloat(c.accumulated_wear).toFixed(0)} units</strong></span>
+                                              <span>RUL: <strong className="text-slate-600 font-extrabold">{Math.round(c.rul).toLocaleString()} {unitText}</strong></span>
+                                              <span>Wear: <strong className="text-slate-600 font-extrabold">{parseFloat(c.accumulated_wear).toFixed(0)} {unitText}</strong></span>
                                             </div>
                                           </div>
                                         </div>
@@ -2392,6 +2392,8 @@ export default function App() {
                                 const colorClass = isCrit ? 'text-rose-500' : isWarn ? 'text-amber-500' : 'text-emerald-500';
                                 const strokeColor = isCrit ? '#ef4444' : isWarn ? '#f59e0b' : '#10b981';
 
+                                const unitText = { brake: 'km', tire: 'km', engine: 'hrs', battery: 'cycles', clutch: 'km' }[c.component] || 'units';
+
                                 // Calculate circumference for progress ring
                                 const radius = 35;
                                 const circumference = 2 * Math.PI * radius;
@@ -2462,15 +2464,15 @@ export default function App() {
                                       <div className="flex-1 space-y-2 text-xs font-semibold text-slate-500">
                                         <div className="flex justify-between border-b border-slate-50 pb-1">
                                           <span>RUL (Predictive):</span>
-                                          <span className="text-slate-800 font-bold">{Math.round(c.rul).toLocaleString()} units</span>
+                                          <span className="text-slate-800 font-bold">{Math.round(c.rul).toLocaleString()} {unitText}</span>
                                         </div>
                                         <div className="flex justify-between border-b border-slate-50 pb-1">
                                           <span>Accumulated Wear:</span>
-                                          <span className="text-slate-800 font-bold">{parseFloat(c.accumulated_wear).toFixed(1)} units</span>
+                                          <span className="text-slate-800 font-bold">{parseFloat(c.accumulated_wear).toFixed(1)} {unitText}</span>
                                         </div>
                                         <div className="flex justify-between">
                                           <span>Life Threshold limit:</span>
-                                          <span className="text-slate-800 font-bold">{Math.round(c.base_life).toLocaleString()} units</span>
+                                          <span className="text-slate-800 font-bold">{Math.round(c.base_life).toLocaleString()} {unitText}</span>
                                         </div>
                                       </div>
                                     </div>
