@@ -15,6 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-transport-https \
     unixodbc-dev \
     libgomp1 \
+    pkg-config \
+    libcairo2-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Add Microsoft SQL Server ODBC Driver 17 repositories (optional but standard for pyodbc + MS SQL)
