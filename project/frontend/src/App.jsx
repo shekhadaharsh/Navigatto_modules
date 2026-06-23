@@ -533,25 +533,21 @@ export default function App() {
   const [activeFuelAlert, setActiveFuelAlert] = useState(null);
   const [showAlertToast, setShowAlertToast] = useState(false);
   const dismissedToastIdsRef = useRef(new Set());
-  const isControllerRef = useRef(localStorage.getItem("is_replay_controller") === "true");
+  const isReplayRunningRef = useRef(false);
+  const globalMuteRef = useRef(false);
 
 
 
   useEffect(() => {
     const handleStop = (e) => {
+      isReplayRunningRef.current = false;
       setShowAlertToast(false);
       setActiveFuelAlert(null);
-      if (e.detail?.local) {
-        isControllerRef.current = false;
-      }
     };
     const handleStart = (e) => {
+      isReplayRunningRef.current = true;
+      globalMuteRef.current = false;
       dismissedToastIdsRef.current.clear();
-      if (e.detail?.local !== undefined) {
-        isControllerRef.current = e.detail.local;
-      } else {
-        isControllerRef.current = localStorage.getItem("is_replay_controller") === "true";
-      }
     };
     window.addEventListener('replay-stopped', handleStop);
     window.addEventListener('replay-started', handleStart);
@@ -795,13 +791,13 @@ export default function App() {
             };
             
             updatedAlerts.splice(existingIdx, 1);
-            if (!dismissedToastIdsRef.current.has(`${mergedAlert.driver_id}-${mergedAlert.trip_id}`)) {
+            if (isReplayRunningRef.current && !globalMuteRef.current && !dismissedToastIdsRef.current.has(`${mergedAlert.driver_id}-${mergedAlert.trip_id}`)) {
               setShowAlertToast(true);
             }
             return [mergedAlert, ...updatedAlerts].slice(0, 20);
           }
 
-          if (!dismissedToastIdsRef.current.has(`${payload.driver_id}-${payload.trip_id}`)) {
+          if (isReplayRunningRef.current && !globalMuteRef.current && !dismissedToastIdsRef.current.has(`${payload.driver_id}-${payload.trip_id}`)) {
             setShowAlertToast(true);
           }
           return [payload, ...prev].slice(0, 20);
@@ -1145,8 +1141,11 @@ export default function App() {
             onClick={(e) => {
               e.stopPropagation();
               setShowAlertToast(false);
-              if (!isControllerRef.current && fuelAlerts[0]) {
-                dismissedToastIdsRef.current.add(`${fuelAlerts[0].driver_id}-${fuelAlerts[0].trip_id}`);
+              if (!isReplayRunningRef.current) {
+                globalMuteRef.current = true;
+                if (fuelAlerts[0]) {
+                  dismissedToastIdsRef.current.add(`${fuelAlerts[0].driver_id}-${fuelAlerts[0].trip_id}`);
+                }
               }
             }}
             className="text-white/60 hover:text-white transition-colors p-0.5 rounded-lg hover:bg-white/10 border-0 outline-none cursor-pointer shrink-0"
@@ -2801,8 +2800,11 @@ export default function App() {
                   <button
                     onClick={() => {
                       setActiveFuelAlert(null);
-                      if (!isControllerRef.current && activeFuelAlert) {
-                        dismissedToastIdsRef.current.add(`${activeFuelAlert.driver_id}-${activeFuelAlert.trip_id}`);
+                      if (!isReplayRunningRef.current) {
+                        globalMuteRef.current = true;
+                        if (activeFuelAlert) {
+                          dismissedToastIdsRef.current.add(`${activeFuelAlert.driver_id}-${activeFuelAlert.trip_id}`);
+                        }
                       }
                     }}
                     className="text-white/70 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10 border-0 outline-none cursor-pointer"

@@ -24,7 +24,6 @@ from driver_module.model import Trip
 
 router = APIRouter(prefix="/fuel", tags=["Fuel Theft Detection"])
 
-
 # ─────────────────────────────────────────
 # REUSABLE HELPER — called from here AND
 # from driver_module's /details endpoint
@@ -46,7 +45,7 @@ def get_fuel_theft_for_trip(db: Session, driver_id: str, trip_id: str) -> dict:
         .order_by(FmcRawPacket.event_time)
         .all()
     )
-
+            
     if not theft_rows:
         return {
             "detected": False,
