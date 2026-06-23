@@ -19,13 +19,26 @@ import logging
 from maintenance_module.model import *
 from .constants import *
 from .ml_loader import get_brake_model, get_engine_model, get_tire_model
-def process_vehicle_engine(db: Session, vehicle_id: str, reg_no: str):
+from typing import Optional
+
+def process_vehicle_engine(db: Session, vehicle_id: str, reg_no: str, max_telemetry_ts: Optional[datetime] = None):
     ensure_wear_state_initialized(db, vehicle_id)
     
+    if max_telemetry_ts is None:
+        max_telemetry_ts = db.query(func.max(RawTelemetry.ts)).filter(
+            RawTelemetry.vehicle_id == vehicle_id
+        ).scalar()
+        
+    if max_telemetry_ts is None:
+        return 0
+        
     last_ts = db.query(func.max(EngineWearEvent.ts)).filter(
         EngineWearEvent.vehicle_id == vehicle_id
     ).scalar()
     
+    if last_ts and max_telemetry_ts <= last_ts:
+        return 0
+        
     telemetry_query = db.query(RawTelemetry).filter(RawTelemetry.vehicle_id == vehicle_id)
     if last_ts:
         telemetry_query = telemetry_query.filter(RawTelemetry.ts > last_ts)

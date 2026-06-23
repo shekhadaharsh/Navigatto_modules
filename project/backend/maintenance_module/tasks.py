@@ -19,11 +19,18 @@ def process_vehicle_wear_task(vehicle_id: str, reg_no: str):
     
     db_session = SessionLocal()
     try:
-        process_vehicle_brakes(db_session, vehicle_id, reg_no)
-        process_vehicle_clutch(db_session, vehicle_id, reg_no)
-        process_vehicle_tires(db_session, vehicle_id, reg_no)
-        process_vehicle_battery(db_session, vehicle_id, reg_no)
-        process_vehicle_engine(db_session, vehicle_id, reg_no)
+        from sqlalchemy import func
+        from maintenance_module.model import RawTelemetry
+        
+        max_telemetry_ts = db_session.query(func.max(RawTelemetry.ts)).filter(
+            RawTelemetry.vehicle_id == vehicle_id
+        ).scalar()
+        
+        process_vehicle_brakes(db_session, vehicle_id, reg_no, max_telemetry_ts)
+        process_vehicle_clutch(db_session, vehicle_id, reg_no, max_telemetry_ts)
+        process_vehicle_tires(db_session, vehicle_id, reg_no, max_telemetry_ts)
+        process_vehicle_battery(db_session, vehicle_id, reg_no, max_telemetry_ts)
+        process_vehicle_engine(db_session, vehicle_id, reg_no, max_telemetry_ts)
         run_alert_check(db_session)
     except Exception as e:
         logging.error(f"Error executing Celery wear engines for vehicle {reg_no}: {e}")
