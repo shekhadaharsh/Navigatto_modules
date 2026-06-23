@@ -18,7 +18,9 @@ from maintenance_module.schema import (
     AlertResponse,
     FleetSummaryResponse,
     FleetVehicle,
-    TelemetryBatch
+    TelemetryBatch,
+    WearHistoryResponse,
+    ComponentDailyWear
 )
 from maintenance_module.wear_engines import (
     ensure_wear_state_initialized,
@@ -313,5 +315,83 @@ def get_fleet_summary(db: Session = Depends(get_db)):
         open_alerts=open_alerts,
         fleet=fleet
     )
+
+
+# ── 8. Wear History Endpoint ───────────────────────────
+@router.get("/history/{vehicle_id}", response_model=WearHistoryResponse)
+def get_wear_history(vehicle_id: str, db: Session = Depends(get_db)):
+    """
+    Returns daily wear history for brakes, tires, and engine for the last 10 active days.
+    If no events are present, returns the last 10 days with 0.0 values.
+    """
+    from driver_module.model import Vehicle
+    from maintenance_module.model import BrakeWearEvent, TireWearEvent, EngineWearEvent
+    from collections import defaultdict
+    from datetime import datetime, timedelta
+
+    # Verify vehicle exists
+    v = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+    if not v:
+        raise HTTPException(status_code=404, detail="Vehicle not found")
+
+    daily_data = defaultdict(lambda: {"brakes": 0.0, "tires": 0.0, "engine": 0.0})
+
+    # Fetch BrakeWearEvents
+    brakes_res = db.query(BrakeWearEvent.ts, BrakeWearEvent.wear_units).filter(
+        BrakeWearEvent.vehicle_id == vehicle_id
+    ).all()
+    for ts, wear in brakes_res:
+        if ts:
+            date_str = ts.strftime("%Y-%m-%d")
+            daily_data[date_str]["brakes"] += float(wear or 0.0)
+
+    # Fetch TireWearEvents
+    tires_res = db.query(TireWearEvent.ts, TireWearEvent.wear_units).filter(
+        TireWearEvent.vehicle_id == vehicle_id
+    ).all()
+    for ts, wear in tires_res:
+        if ts:
+            date_str = ts.strftime("%Y-%m-%d")
+            daily_data[date_str]["tires"] += float(wear or 0.0)
+
+    # Fetch EngineWearEvents
+    engines_res = db.query(EngineWearEvent.ts, EngineWearEvent.wear_units).filter(
+        EngineWearEvent.vehicle_id == vehicle_id
+    ).all()
+    for ts, wear in engines_res:
+        if ts:
+            date_str = ts.strftime("%Y-%m-%d")
+            daily_data[date_str]["engine"] += float(wear or 0.0)
+
+    sorted_dates = sorted(daily_data.keys())
+    last_10_dates = sorted_dates[-10:]
+
+    history = []
+    for d in last_10_dates:
+        history.append(ComponentDailyWear(
+            date=d,
+            brakes=round(daily_data[d]["brakes"], 4),
+            tires=round(daily_data[d]["tires"], 4),
+            engine=round(daily_data[d]["engine"], 4)
+        ))
+
+    # Fallback if no history exists
+    if not history:
+        today = datetime.utcnow()
+        for i in range(9, -1, -1):
+            d_str = (today - timedelta(days=i)).strftime("%Y-%m-%d")
+            history.append(ComponentDailyWear(
+                date=d_str,
+                brakes=0.0,
+                tires=0.0,
+                engine=0.0
+            ))
+
+    return WearHistoryResponse(
+        vehicle_id=vehicle_id,
+        history=history
+    )
+
+
 
 

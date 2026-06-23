@@ -6,8 +6,9 @@ from datetime import datetime, timedelta
 # Ensure backend directory is in the path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+import driver_module.model  # Fix: Ensure Vehicle model is loaded for SQLAlchemy relationships
 from database.db import SessionLocal
-from maintenance_module.engines import process_vehicle_engine, process_vehicle_brakes, process_vehicle_tires, run_alert_check
+from maintenance_module.wear_engines import process_vehicle_engine, process_vehicle_brakes, process_vehicle_tires, run_alert_check
 from sqlalchemy import text
 
 def simulate_telemetry():

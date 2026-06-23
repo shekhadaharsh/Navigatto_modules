@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 print("Testing imports for the new Maintenance Module components...")
 try:
     from database.db import Base, get_db
-    print("✓ Successfully imported database core.")
+    print("[OK] Successfully imported database core.")
     
     from maintenance_module.model import (
         ComponentWearState,
@@ -20,7 +20,7 @@ try:
         TireProfile,
         ComponentBaseLife
     )
-    print("✓ Successfully imported SQLAlchemy models.")
+    print("[OK] Successfully imported SQLAlchemy models.")
     
     from maintenance_module.schema import (
         TelemetryBatch,
@@ -29,9 +29,9 @@ try:
         AlertsListResponse,
         FleetSummaryResponse
     )
-    print("✓ Successfully imported Pydantic validation schemas.")
+    print("[OK] Successfully imported Pydantic validation schemas.")
     
-    from maintenance_module.engines import (
+    from maintenance_module.wear_engines import (
         process_vehicle_brakes,
         process_vehicle_clutch,
         process_vehicle_tires,
@@ -39,14 +39,14 @@ try:
         process_vehicle_engine,
         run_alert_check
     )
-    print("✓ Successfully imported wear event and alert engines.")
+    print("[OK] Successfully imported wear event and alert engines.")
     
     from maintenance_module.routes import router as maint_router
-    print("✓ Successfully imported FastAPI routes.")
+    print("[OK] Successfully imported FastAPI routes.")
     
     import main
-    print("✓ Successfully imported main FastAPI entrypoint.")
+    print("[OK] Successfully imported main FastAPI entrypoint.")
     print("\nALL IMPORTS AND SYNTAX CHECKS COMPLETED SUCCESSFULLY! No errors found.")
 except Exception as e:
-    print(f"\n❌ IMPORT OR SYNTAX ERROR: {e}")
+    print(f"\n[ERROR] IMPORT OR SYNTAX ERROR: {e}")
     sys.exit(1)

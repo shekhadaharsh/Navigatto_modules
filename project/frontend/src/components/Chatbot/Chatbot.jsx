@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   MessageSquare, X, Send, User, Bot, Sparkles, Terminal, Database, 
   ChevronDown, ChevronUp, Copy, Check, AlertCircle, RefreshCw, 
-  ChevronLeft, ChevronRight 
+  ChevronLeft, ChevronRight, History, Trash2, Plus
 } from 'lucide-react';
 
 // Sub-component for paginated database tables
@@ -136,6 +136,9 @@ const SqlViewer = ({ sql }) => {
 const Chatbot = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [sessionId, setSessionId] = useState(null);
+  const [sessions, setSessions] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [messages, setMessages] = useState([
     {
       id: 1,
@@ -153,11 +156,79 @@ const Chatbot = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const fetchSessions = async () => {
+    try {
+      const response = await fetch('/api/chatbot/sessions');
+      if (response.ok) {
+        const data = await response.json();
+        setSessions(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch chatbot sessions:', error);
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
+      fetchSessions();
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && !showHistory) {
       scrollToBottom();
     }
-  }, [messages, isOpen, isLoading]);
+  }, [messages, isOpen, isLoading, showHistory]);
+
+  const startNewChat = () => {
+    setMessages([
+      {
+        id: 1,
+        sender: 'bot',
+        text: 'Welcome! 🚀 I am your FleetIQ AI Assistant. I can help you analyze vehicles, drivers, and trips.\n\nAsk me anything, like:\n• *Which driver has the most trips?*\n• *Any critical maintenance alerts?*\n• *Show top 5 vehicles by fuel consumption.*',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      },
+    ]);
+    setSessionId(null);
+    setShowHistory(false);
+  };
+
+  const loadSession = async (sId) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/chatbot/sessions/${sId}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const msgs = await response.json();
+      if (msgs.length === 0) {
+        startNewChat();
+      } else {
+        setMessages(msgs);
+        setSessionId(sId);
+      }
+      setShowHistory(false);
+    } catch (error) {
+      console.error('Failed to load session messages:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const deleteSession = async (sId, e) => {
+    e.stopPropagation();
+    try {
+      const response = await fetch(`/api/chatbot/sessions/${sId}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        fetchSessions();
+        if (sessionId === sId) {
+          startNewChat();
+        }
+      }
+    } catch (error) {
+      console.error('Failed to delete chatbot session:', error);
+    }
+  };
 
   const handleSendMessage = async (textToSend) => {
     const queryText = typeof textToSend === 'string' ? textToSend : inputText.trim();
@@ -177,15 +248,6 @@ const Chatbot = () => {
     setMessages((prev) => [...prev, newUserMsg]);
     setIsLoading(true);
 
-    // Prepare history payload for context rewrite (last 6 messages)
-    const historyPayload = messages
-      .filter((m) => m.id !== 1) // exclude default welcome message
-      .slice(-6)
-      .map((m) => ({
-        role: m.sender === 'user' ? 'user' : 'assistant',
-        content: m.text,
-      }));
-
     try {
       const response = await fetch('/api/chatbot/chat', {
         method: 'POST',
@@ -194,7 +256,7 @@ const Chatbot = () => {
         },
         body: JSON.stringify({
           message: queryText,
-          history: historyPayload,
+          session_id: sessionId,
         }),
       });
 
@@ -205,6 +267,11 @@ const Chatbot = () => {
 
       const data = await response.json();
       
+      if (data.session_id && data.session_id !== sessionId) {
+        setSessionId(data.session_id);
+        fetchSessions();
+      }
+
       const botResponse = {
         id: Date.now() + 1,
         sender: 'bot',
@@ -327,137 +394,222 @@ const Chatbot = () => {
               <p className="text-brand-100 text-[10px] font-medium uppercase tracking-wider">Natural Language to SQL Engine</p>
             </div>
           </div>
-          <button
-            onClick={toggleChat}
-            className="p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-colors backdrop-blur-sm border border-white/10 relative z-10 cursor-pointer border-none outline-none"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-5 bg-slate-50/50 space-y-4">
-          {messages.map((msg) => {
-            const isBot = msg.sender === 'bot';
-            const isError = msg.status === 'error' || msg.status === 'db_error' || msg.status === 'blocked';
-            const isOutScope = msg.status === 'out_of_scope' || msg.status === 'cannot_generate';
-            
-            return (
-              <div key={msg.id} className={`flex items-start gap-2.5 ${isBot ? 'flex-row' : 'flex-row-reverse'}`}>
-                {/* Avatar */}
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm ${
-                  isBot 
-                    ? isError 
-                      ? 'bg-rose-100 text-rose-600 border border-rose-200' 
-                      : 'bg-brand-100 text-brand-600 border border-brand-200' 
-                    : 'bg-slate-200 text-slate-600'
-                }`}>
-                  {isBot ? (
-                    isError ? <AlertCircle className="w-4 h-4" /> : <Bot className="w-4 h-4" />
-                  ) : (
-                    <User className="w-4 h-4" />
-                  )}
-                </div>
-
-                {/* Message Bubble */}
-                <div className={`max-w-[85%] flex flex-col ${isBot ? 'items-start' : 'items-end'} w-full`}>
-                  <div
-                    className={`px-4 py-3 rounded-2xl text-[13px] font-medium leading-relaxed shadow-sm w-full ${
-                      isBot
-                        ? isError
-                          ? 'bg-rose-50/70 text-rose-800 border border-rose-200/60 rounded-bl-sm'
-                          : isOutScope
-                            ? 'bg-amber-50/60 text-slate-700 border border-amber-200/60 rounded-bl-sm'
-                            : 'bg-white text-slate-700 border border-slate-200/60 rounded-bl-sm'
-                        : 'bg-brand-500 text-white rounded-br-sm max-w-[fit-content]'
-                    }`}
-                  >
-                    {isBot ? formatMessageText(msg.text) : msg.text}
-
-                    {/* Data Table (if rows exist) */}
-                    {isBot && msg.columns && msg.rows && msg.rows.length > 0 && (
-                      <DbResultTable columns={msg.columns} rows={msg.rows} />
-                    )}
-
-                    {/* Suggestion Chips */}
-                    {isBot && msg.suggestions && msg.suggestions.length > 0 && (
-                      <div className="mt-3.5 border-t border-slate-100 pt-3 flex flex-col gap-2">
-                        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
-                          <Database className="w-3.5 h-3.5 text-brand-500" />
-                          Suggested Queries
-                        </span>
-                        <div className="flex flex-col gap-1.5">
-                          {msg.suggestions.map((sug, idx) => {
-                            const sugClean = sug.replace(/\*/g, "");
-                            return (
-                              <button
-                                key={idx}
-                                onClick={() => handleSendMessage(sugClean)}
-                                className="text-left w-full px-3 py-2 text-xs font-semibold text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100/70 border border-brand-100 rounded-xl transition-all cursor-pointer outline-none"
-                              >
-                                💡 {sugClean}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <span className="text-[9px] text-slate-400 font-bold mt-1 px-1">
-                    {msg.timestamp}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
-
-          {/* Typing Indicator */}
-          {isLoading && (
-            <div className="flex items-start gap-2.5 flex-row">
-              <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm bg-brand-100 text-brand-600 border border-brand-200">
-                <Bot className="w-4 h-4" />
-              </div>
-              <div className="max-w-[85%] flex flex-col items-start">
-                <div className="px-4 py-3 rounded-2xl bg-white border border-slate-200/60 rounded-bl-sm flex items-center justify-center gap-1 w-16 h-9">
-                  <div className="w-1.5 h-1.5 bg-brand-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                  <div className="w-1.5 h-1.5 bg-brand-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                  <div className="w-1.5 h-1.5 bg-brand-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                </div>
-              </div>
-            </div>
-          )}
           
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Input Area */}
-        <div className="p-4 bg-white border-t border-slate-100 shrink-0">
-          <form onSubmit={handleFormSubmit} className="relative flex items-end gap-2">
-            <textarea
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleFormSubmit(e);
-                }
-              }}
-              placeholder="Ask questions (e.g. 'Show top 5 drivers by trip count', 'Brake wear rating for vehicle id x')..."
-              rows={2}
-              className="flex-1 bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-xl pl-4 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all placeholder-slate-400 font-medium resize-none leading-relaxed"
-            />
+          <div className="flex items-center gap-1.5 relative z-10">
             <button
-              type="submit"
-              disabled={isLoading || !inputText.trim()}
-              className="p-3 bg-brand-500 hover:bg-brand-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl transition-colors shadow-sm shrink-0 border-none outline-none cursor-pointer"
+              onClick={() => {
+                setShowHistory(!showHistory);
+                if (!showHistory) fetchSessions();
+              }}
+              className={`p-2 rounded-xl transition-all cursor-pointer border-none outline-none ${
+                showHistory ? 'bg-white text-brand-600 font-extrabold shadow-sm' : 'bg-white/10 hover:bg-white/20 text-white'
+              }`}
+              title="Chat History"
             >
-              {isLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              <History className="w-4 h-4" />
             </button>
-          </form>
-          <div className="text-center mt-2">
-            <span className="text-[9px] text-slate-400 font-medium">Press Enter to send · Shift+Enter for newline</span>
+            <button
+              onClick={toggleChat}
+              className="p-2 bg-white/10 hover:bg-white/20 rounded-xl transition-colors backdrop-blur-sm border border-white/10 relative z-10 cursor-pointer border-none outline-none"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
         </div>
+
+        {/* Sessions History Screen or Message Area */}
+        {showHistory ? (
+          <div className="flex-1 overflow-y-auto p-5 bg-slate-50 flex flex-col justify-between">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-slate-400 font-bold uppercase tracking-wider">Saved Chats</span>
+                <button
+                  onClick={startNewChat}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-brand-500 hover:bg-brand-600 text-white text-xs font-bold font-outfit rounded-xl transition-colors cursor-pointer border-none outline-none shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  New Chat
+                </button>
+              </div>
+
+              {sessions.length === 0 ? (
+                <div className="h-60 flex flex-col items-center justify-center text-center p-6 bg-white border border-slate-200/60 rounded-3xl shadow-sm">
+                  <div className="p-3 bg-slate-100 text-slate-400 rounded-full mb-3">
+                    <MessageSquare className="w-6 h-6" />
+                  </div>
+                  <p className="text-sm font-bold text-slate-700">No saved chats yet</p>
+                  <p className="text-xs text-slate-400 mt-1">Start typing a new message to create a session.</p>
+                </div>
+              ) : (
+                <div className="space-y-2.5 max-h-[55vh] overflow-y-auto pr-1">
+                  {sessions.map((session) => {
+                    const isActive = session.session_id === sessionId;
+                    return (
+                      <div
+                        key={session.session_id}
+                        onClick={() => loadSession(session.session_id)}
+                        className={`group w-full p-3.5 rounded-2xl border transition-all flex items-center justify-between cursor-pointer ${
+                          isActive
+                            ? 'bg-brand-50/70 border-brand-200 text-brand-700 shadow-sm font-extrabold'
+                            : 'bg-white hover:bg-slate-50/80 border-slate-200/60 text-slate-700 hover:border-slate-300'
+                        }`}
+                      >
+                        <div className="flex-1 min-w-0 pr-2">
+                          <p className="text-xs font-bold truncate leading-snug">{session.title}</p>
+                          <span className="text-[9px] text-slate-400 font-bold block mt-1">
+                            {new Date(session.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })} at{' '}
+                            {new Date(session.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <button
+                          onClick={(e) => deleteSession(session.session_id, e)}
+                          className="p-1.5 bg-transparent hover:bg-rose-50 text-slate-400 hover:text-rose-500 rounded-xl transition-all cursor-pointer opacity-80 hover:opacity-100 border-none outline-none active:scale-95"
+                          title="Delete Chat"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setShowHistory(false)}
+              className="w-full py-2.5 bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-700 text-xs font-bold font-outfit rounded-xl transition-colors cursor-pointer outline-none mt-4 shrink-0 shadow-sm"
+            >
+              Back to Chat
+            </button>
+          </div>
+        ) : (
+          /* Normal Message Area & Input */
+          <>
+            {/* Messages Area */}
+            <div className="flex-1 overflow-y-auto p-5 bg-slate-50/50 space-y-4">
+              {messages.map((msg) => {
+                const isBot = msg.sender === 'bot';
+                const isError = msg.status === 'error' || msg.status === 'db_error' || msg.status === 'blocked';
+                const isOutScope = msg.status === 'out_of_scope' || msg.status === 'cannot_generate';
+                
+                return (
+                  <div key={msg.id} className={`flex items-start gap-2.5 ${isBot ? 'flex-row' : 'flex-row-reverse'}`}>
+                    {/* Avatar */}
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm ${
+                      isBot 
+                        ? isError 
+                          ? 'bg-rose-100 text-rose-600 border border-rose-200' 
+                          : 'bg-brand-100 text-brand-600 border border-brand-200' 
+                        : 'bg-slate-200 text-slate-600'
+                    }`}>
+                      {isBot ? (
+                        isError ? <AlertCircle className="w-4 h-4" /> : <Bot className="w-4 h-4" />
+                      ) : (
+                        <User className="w-4 h-4" />
+                      )}
+                    </div>
+
+                    {/* Message Bubble */}
+                    <div className={`max-w-[85%] flex flex-col ${isBot ? 'items-start' : 'items-end'} w-full`}>
+                      <div
+                        className={`px-4 py-3 rounded-2xl text-[13px] font-medium leading-relaxed shadow-sm w-full ${
+                          isBot
+                            ? isError
+                              ? 'bg-rose-50/70 text-rose-800 border border-rose-200/60 rounded-bl-sm'
+                              : isOutScope
+                                ? 'bg-amber-50/60 text-slate-700 border border-amber-200/60 rounded-bl-sm'
+                                : 'bg-white text-slate-700 border border-slate-200/60 rounded-bl-sm'
+                            : 'bg-brand-500 text-white rounded-br-sm max-w-[fit-content]'
+                        }`}
+                      >
+                        {isBot ? formatMessageText(msg.text) : msg.text}
+
+                        {/* Data Table (if rows exist) */}
+                        {isBot && msg.columns && msg.rows && msg.rows.length > 0 && (
+                          <DbResultTable columns={msg.columns} rows={msg.rows} />
+                        )}
+
+                        {/* Suggestion Chips */}
+                        {isBot && msg.suggestions && msg.suggestions.length > 0 && (
+                          <div className="mt-3.5 border-t border-slate-100 pt-3 flex flex-col gap-2">
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                              <Database className="w-3.5 h-3.5 text-brand-500" />
+                              Suggested Queries
+                            </span>
+                            <div className="flex flex-col gap-1.5">
+                              {msg.suggestions.map((sug, idx) => {
+                                const sugClean = sug.replace(/\*/g, "");
+                                return (
+                                  <button
+                                    key={idx}
+                                    onClick={() => handleSendMessage(sugClean)}
+                                    className="text-left w-full px-3 py-2 text-xs font-semibold text-brand-600 hover:text-brand-700 bg-brand-50 hover:bg-brand-100/70 border border-brand-100 rounded-xl transition-all cursor-pointer outline-none"
+                                  >
+                                    💡 {sugClean}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-[9px] text-slate-400 font-bold mt-1 px-1">
+                        {msg.timestamp}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Typing Indicator */}
+              {isLoading && (
+                <div className="flex items-start gap-2.5 flex-row">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-sm bg-brand-100 text-brand-600 border border-brand-200">
+                    <Bot className="w-4 h-4" />
+                  </div>
+                  <div className="max-w-[85%] flex flex-col items-start">
+                    <div className="px-4 py-3 rounded-2xl bg-white border border-slate-200/60 rounded-bl-sm flex items-center justify-center gap-1 w-16 h-9">
+                      <div className="w-1.5 h-1.5 bg-brand-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="w-1.5 h-1.5 bg-brand-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                      <div className="w-1.5 h-1.5 bg-brand-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Input Area */}
+            <div className="p-4 bg-white border-t border-slate-100 shrink-0">
+              <form onSubmit={handleFormSubmit} className="relative flex items-end gap-2">
+                <textarea
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleFormSubmit(e);
+                    }
+                  }}
+                  placeholder="Ask questions (e.g. 'Show top 5 drivers by trip count', 'Brake wear rating for vehicle id x')..."
+                  rows={2}
+                  className="flex-1 bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-xl pl-4 pr-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 transition-all placeholder-slate-400 font-medium resize-none leading-relaxed"
+                />
+                <button
+                  type="submit"
+                  disabled={isLoading || !inputText.trim()}
+                  className="p-3 bg-brand-500 hover:bg-brand-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl transition-colors shadow-sm shrink-0 border-none outline-none cursor-pointer"
+                >
+                  {isLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                </button>
+              </form>
+              <div className="text-center mt-2">
+                <span className="text-[9px] text-slate-400 font-medium">Press Enter to send · Shift+Enter for newline</span>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </>
   );

@@ -55,6 +55,7 @@ class MaintenanceAlert(Base):
     message         = Column(String(500))
     acknowledged    = Column(Boolean, default=False)
     ack_at          = Column(DateTime)
+    last_notified_at = Column(DateTime, nullable=True)
 
     # Relationships
     vehicle = relationship("driver_module.model.Vehicle")
@@ -270,3 +271,5 @@ class RawTelemetry(Base):
     harsh_accel     = Column(Integer)
     harsh_corner    = Column(Integer)
     overspeeding    = Column(Integer)
+
+

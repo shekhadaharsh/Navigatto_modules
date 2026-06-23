@@ -52,6 +52,7 @@ def run_alert_check(db: Session):
         ).count()
 
         if already_open == 0:
+            last_not_val = datetime.utcnow() if level in ['urgent', 'critical'] else None
             new_alert = MaintenanceAlert(
                 id=str(uuid.uuid4()),
                 vehicle_id=vid,
@@ -61,10 +62,29 @@ def run_alert_check(db: Session):
                 health_at_alert=health,
                 alert_level=level,
                 message=message,
-                acknowledged=False
+                acknowledged=False,
+                last_notified_at=last_not_val
             )
             db.add(new_alert)
             alerts_created += 1
+
+            # Trigger background notification task for critical/urgent alerts
+            if level in ['urgent', 'critical']:
+                from driver_module.model import Vehicle
+                from maintenance_module.tasks import send_alert_notification_task
+                
+                v = db.query(Vehicle).filter(Vehicle.id == vid).first()
+                reg_no = v.reg_no if v else vid
+                
+                send_alert_notification_task.delay(
+                    vehicle_reg_no=reg_no,
+                    component=component,
+                    level=level,
+                    message=message,
+                    rul=rul,
+                    health=health
+                )
+
 
     if alerts_created > 0:
         db.commit()
