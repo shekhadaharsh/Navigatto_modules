@@ -135,6 +135,13 @@ replay_manager = ReplayManager()
 # ─────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Run database schema migrations
+    try:
+        from database.db import run_migrations
+        run_migrations()
+    except Exception as e:
+        print(f"[Lifespan] Database migration failed: {e}")
+
     # Pre-load chatbot schema and embedding models on startup
     try:
         from chatbot_module.schema_service import load_schema
@@ -142,11 +149,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[Lifespan] Error pre-loading schema & models: {e}")
 
+    # Start background reminder scheduler for critical vehicle alerts
+    reminder_task = None
+    try:
+        from maintenance_module.reminder_service import start_reminder_scheduler
+        reminder_task = asyncio.create_task(start_reminder_scheduler())
+    except Exception as e:
+        print(f"[Lifespan] Failed to start reminder scheduler: {e}")
+
     if not ENABLE_MANUAL_REPLAY_CONTROL:
         await replay_manager.start()
     else:
         print("[ReplayManager] Manual control mode — waiting for UI trigger")
     yield
+    if reminder_task:
+        reminder_task.cancel()
     await replay_manager.stop()
 
 # ─────────────────────────────────────────

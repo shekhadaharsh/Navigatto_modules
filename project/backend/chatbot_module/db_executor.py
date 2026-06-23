@@ -68,11 +68,31 @@ def validate_sql_safety(sql: str) -> tuple[bool, Optional[str]]:
         (True, None)          — safe to execute
         (False, "KEYWORD")    — blocked; returns the offending keyword
     """
-    normalized = re.sub(r"\s+", " ", sql.strip().upper())
+    # 1. Remove comments to prevent comment-based injection bypasses
+    # Remove single-line comments (-- comment)
+    sql_clean = re.sub(r"--[^\r\n]*", "", sql)
+    # Remove multi-line comments (/* comment */)
+    sql_clean = re.sub(r"/\*.*?\*/", "", sql_clean, flags=re.DOTALL)
+
+    # 2. Check for multiple statements (semicolon in the middle)
+    statements = [s.strip() for s in sql_clean.split(";") if s.strip()]
+    if len(statements) > 1:
+        return False, "MULTIPLE_STATEMENTS"
+
+    # 3. Check if the query starts with SELECT or WITH
+    normalized = re.sub(r"\s+", " ", sql_clean.strip().upper())
+    if not normalized:
+        return False, "EMPTY_QUERY"
+        
+    if not (normalized.startswith("SELECT") or normalized.startswith("WITH")):
+        return False, "NON-SELECT-STATEMENT"
+
+    # 4. Check for blocked keywords
     for kw in _BLOCKED_KEYWORDS:
         pattern = r"\b" + re.escape(kw) + r"\b"
         if re.search(pattern, normalized):
             return False, kw
+
     return True, None
 
 

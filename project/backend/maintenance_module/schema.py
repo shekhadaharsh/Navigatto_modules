@@ -112,3 +112,18 @@ class FleetVehicle(BaseModel):
 class FleetSummaryResponse(BaseModel):
     open_alerts: int
     fleet:       List[FleetVehicle]
+
+
+class ComponentDailyWear(BaseModel):
+    date: str
+    brakes: float
+    tires: float
+    engine: float
+
+
+class WearHistoryResponse(BaseModel):
+    vehicle_id: str
+    history: List[ComponentDailyWear]
+
+
+

@@ -9,8 +9,9 @@ import sys
 # Ensure backend directory is in the path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+import driver_module.model  # Fix: Ensure Vehicle model is loaded for SQLAlchemy relationships
 from database.db import SessionLocal
-from maintenance_module.engines import ensure_wear_state_initialized, run_alert_check
+from maintenance_module.wear_engines import ensure_wear_state_initialized, run_alert_check
 from sqlalchemy import text
 
 def trigger_engine_issues():
@@ -39,17 +40,17 @@ def trigger_engine_issues():
                 {"vid": vid}
             )
 
-            # Set engine wear to 37000.0 (health = 26%)
+            # Set engine wear to 46000.0 (health = 8%)
             db.execute(
                 text("""
                     UPDATE dbo.component_wear_state
-                    SET accumulated_wear = 37000.0,
+                    SET accumulated_wear = 46000.0,
                         last_updated = SYSUTCDATETIME()
                     WHERE vehicle_id = :vid AND component = 'engine'
                 """),
                 {"vid": vid}
             )
-            print(f"  -> Reset accumulated_wear to 37000.0 (Health Score will be 26.0%)")
+            print(f"  -> Reset accumulated_wear to 46000.0 (Health Score will be 8.0%)")
 
         db.commit()
 

@@ -524,6 +524,8 @@ export default function App() {
   const [maintHealthData, setMaintHealthData] = useState(null);
   const [maintFleetSummary, setMaintFleetSummary] = useState(null);
   const [isLoadingMaintHealth, setIsLoadingMaintHealth] = useState(false);
+  const [maintHistoryData, setMaintHistoryData] = useState([]);
+  const [isLoadingMaintHistory, setIsLoadingMaintHistory] = useState(false);
   const [activeMaintTab, setActiveMaintTab] = useState('vehicle');
   const [maintSearchTerm, setMaintSearchTerm] = useState('');
   const [maintFilterStatus, setMaintFilterStatus] = useState('all');
@@ -924,6 +926,22 @@ export default function App() {
             { vehicle_id: "VH004", reg_no: "DL-04-DD-3456", make: "Tata", model: "LPT", critical_count: 0, warning_count: 0, min_health: 85.0, overall_status: "ok" }
           ]
         });
+        
+        // Mock wear history
+        const mockHistory = [];
+        const today = new Date();
+        for (let i = 9; i >= 0; i--) {
+          const d = new Date();
+          d.setDate(today.getDate() - i);
+          const dateStr = d.toISOString().split('T')[0];
+          mockHistory.push({
+            date: dateStr,
+            brakes: parseFloat((5.0 + Math.sin(i) * 2.0).toFixed(2)),
+            tires: parseFloat((3.0 + Math.cos(i) * 1.5).toFixed(2)),
+            engine: parseFloat((8.0 + Math.sin(i * 1.5) * 3.0).toFixed(2)),
+          });
+        }
+        setMaintHistoryData(mockHistory);
         setIsLoadingMaintHealth(false);
       }, 400);
     } else {
@@ -938,10 +956,19 @@ export default function App() {
           const dataF = await resF.json();
           setMaintFleetSummary(dataF);
         }
+        setIsLoadingMaintHistory(true);
+        const resHist = await fetch(`/api/maintenance/history/${vid}`);
+        if (resHist.ok) {
+          const dataHist = await resHist.json();
+          setMaintHistoryData(dataHist.history || []);
+        } else {
+          setMaintHistoryData([]);
+        }
       } catch (e) {
         console.error("Error loading maintenance views:", e);
       } finally {
         setIsLoadingMaintHealth(false);
+        setIsLoadingMaintHistory(false);
       }
     }
   };
@@ -2486,6 +2513,96 @@ export default function App() {
                                 </div>
                               );
                             })}
+                          </div>
+
+                          {/* Component Daily Wear Accumulation Trend Chart */}
+                          <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-sm">
+                            <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-4">
+                              <div>
+                                <h4 className="text-sm font-black font-outfit text-slate-800 uppercase tracking-wide">Component Daily Wear Trend</h4>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase">Last 10 active days wear accumulation rate (wear units)</p>
+                              </div>
+                              <span className="text-[10px] bg-brand-50 text-brand-600 px-2 py-0.5 rounded-full font-bold border border-brand-100">
+                                Trend Analysis
+                              </span>
+                            </div>
+                            
+                            <div className="h-64 w-full">
+                              {isLoadingMaintHistory ? (
+                                <div className="h-full flex items-center justify-center">
+                                  <RefreshCw className="w-5 h-5 text-brand-500 animate-spin" />
+                                  <span className="text-xs text-slate-400 font-medium ml-2 font-outfit">Loading history chart...</span>
+                                </div>
+                              ) : maintHistoryData.length === 0 ? (
+                                <div className="h-full flex items-center justify-center text-xs text-slate-400 italic">
+                                  No wear history data available.
+                                </div>
+                              ) : (
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <AreaChart
+                                    data={maintHistoryData}
+                                    margin={{ top: 10, right: 10, left: -10, bottom: 0 }}
+                                  >
+                                    <defs>
+                                      <linearGradient id="colorBrakes" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.8}/>
+                                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0}/>
+                                      </linearGradient>
+                                      <linearGradient id="colorTires" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
+                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                                      </linearGradient>
+                                      <linearGradient id="colorEngine" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.8}/>
+                                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                                      </linearGradient>
+                                    </defs>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" opacity={0.5} />
+                                    <XAxis 
+                                      dataKey="date" 
+                                      stroke="#94a3b8" 
+                                      fontSize={10} 
+                                      fontWeight={600} 
+                                      tickLine={false} 
+                                      axisLine={false} 
+                                      dy={8}
+                                      tickFormatter={(dateStr) => {
+                                        try {
+                                          const parts = dateStr.split('-');
+                                          if (parts.length === 3) {
+                                            return `${parts[2]}/${parts[1]}`; // DD/MM format
+                                          }
+                                        } catch (_) {}
+                                        return dateStr;
+                                      }}
+                                    />
+                                    <YAxis 
+                                      stroke="#94a3b8" 
+                                      fontSize={10} 
+                                      fontWeight={600} 
+                                      tickLine={false} 
+                                      axisLine={false} 
+                                      dx={-8}
+                                    />
+                                    <Tooltip
+                                      contentStyle={{
+                                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                                        backdropFilter: 'blur(8px)',
+                                        borderRadius: '16px',
+                                        border: '1px solid #e2e8f0',
+                                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.05)',
+                                        fontSize: '11px',
+                                        fontWeight: 'bold',
+                                      }}
+                                    />
+                                    <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: 'bold' }} />
+                                    <Area type="monotone" dataKey="brakes" stackId="1" stroke="#f59e0b" strokeWidth={2} fillOpacity={1} fill="url(#colorBrakes)" name="Brakes" />
+                                    <Area type="monotone" dataKey="tires" stackId="1" stroke="#10b981" strokeWidth={2} fillOpacity={1} fill="url(#colorTires)" name="Tires" />
+                                    <Area type="monotone" dataKey="engine" stackId="1" stroke="#6366f1" strokeWidth={2} fillOpacity={1} fill="url(#colorEngine)" name="Engine" />
+                                  </AreaChart>
+                                </ResponsiveContainer>
+                              )}
+                            </div>
                           </div>
                         </div>
                       ) : (
