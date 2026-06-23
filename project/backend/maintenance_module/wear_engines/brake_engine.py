@@ -19,15 +19,28 @@ import logging
 from maintenance_module.model import *
 from .constants import *
 from .ml_loader import get_brake_model, get_engine_model, get_tire_model
-def process_vehicle_brakes(db: Session, vehicle_id: str, reg_no: str):
+from typing import Optional
+
+def process_vehicle_brakes(db: Session, vehicle_id: str, reg_no: str, max_telemetry_ts: Optional[datetime] = None):
     # Ensure wear state rows exist
     ensure_wear_state_initialized(db, vehicle_id)
     
+    if max_telemetry_ts is None:
+        max_telemetry_ts = db.query(func.max(RawTelemetry.ts)).filter(
+            RawTelemetry.vehicle_id == vehicle_id
+        ).scalar()
+        
+    if max_telemetry_ts is None:
+        return 0
+        
     # 1. Get latest processed timestamp to prevent double counting
     last_ts = db.query(func.max(BrakeWearEvent.ts)).filter(
         BrakeWearEvent.vehicle_id == vehicle_id
     ).scalar()
     
+    if last_ts and max_telemetry_ts <= last_ts:
+        return 0
+        
     # 2. Fetch new telemetry rows
     telemetry_query = db.query(RawTelemetry).filter(RawTelemetry.vehicle_id == vehicle_id)
     if last_ts:

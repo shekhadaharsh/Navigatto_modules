@@ -459,3 +459,105 @@ FROM
 STATUS: success
 ROWS RETURNED: 9
 ======================================================================
+
+======================================================================
+[2026-06-23 10:54:09] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: how many driver are there
+STANDALONE REWRITE: how many driver are there
+GENERATED T-SQL: SELECT COUNT(*) AS TotalDrivers FROM drivers
+STATUS: success
+ROWS RETURNED: 1
+======================================================================
+
+======================================================================
+[2026-06-23 11:19:04] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: what are the vehicle are in warning state
+STANDALONE REWRITE: what are the vehicle are in warning state
+GENERATED T-SQL: SELECT v.vehicle_name 
+FROM vehicles v 
+INNER JOIN component_wear_state cws ON v.id = cws.vehicle_id 
+WHERE cws.health_score < 0.5 AND cws.health_score > 0.2
+STATUS: success
+ROWS RETURNED: 0
+======================================================================
+
+======================================================================
+[2026-06-23 11:38:21] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: what are the vehicle are in warning state ?
+STANDALONE REWRITE: what are the vehicle are in warning state ?
+GENERATED T-SQL: SELECT v.reg_no, v.vehicle_name 
+FROM vehicles v 
+INNER JOIN component_wear_state cws ON v.id = cws.vehicle_id 
+WHERE cws.health_score < 0.5 AND cws.rul < 500;
+STATUS: success
+ROWS RETURNED: 0
+======================================================================
+
+======================================================================
+[2026-06-23 12:02:16] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: what are the vehicle are in warning state ?
+STANDALONE REWRITE: what are the vehicle are in warning state ?
+GENERATED T-SQL: SELECT v.reg_no, v.vehicle_name 
+FROM vehicles v 
+INNER JOIN component_wear_state cws ON v.id = cws.vehicle_id 
+WHERE cws.health_score BETWEEN 10.0 AND 30.0
+STATUS: success
+ROWS RETURNED: 3
+======================================================================
+
+======================================================================
+[2026-06-23 12:03:54] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: what are the vehicle are in criticle state
+STANDALONE REWRITE: What are the vehicles that are in a critical state ?
+GENERATED T-SQL: SELECT v.reg_no, v.vehicle_name, cws.component, cws.health_score 
+FROM vehicles v 
+INNER JOIN component_wear_state cws ON v.id = cws.vehicle_id 
+WHERE cws.health_score < 10.0
+STATUS: success
+ROWS RETURNED: 2
+======================================================================
+
+======================================================================
+[2026-06-23 12:22:09] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: how many vehicle are in warning state?
+STANDALONE REWRITE: how many vehicle are in warning state?
+GENERATED T-SQL: SELECT COUNT(DISTINCT cws.vehicle_id) AS TotalVehicles 
+FROM component_wear_state cws 
+INNER JOIN vehicles v ON cws.vehicle_id = v.id 
+WHERE cws.health_score BETWEEN 10.0 AND 30.0
+STATUS: success
+ROWS RETURNED: 1
+======================================================================
+
+======================================================================
+[2026-06-23 12:22:20] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: why?
+STANDALONE REWRITE: Why are there 3 vehicles in a warning state in the fleet.
+GENERATED T-SQL: SELECT COUNT(DISTINCT cws.vehicle_id) AS TotalVehicles 
+FROM component_wear_state cws 
+WHERE cws.health_score BETWEEN 10.0 AND 30.0 
+AND cws.vehicle_id IN (SELECT id FROM vehicles WHERE is_active = 1)
+STATUS: success
+ROWS RETURNED: 1
+======================================================================
+
+======================================================================
+[2026-06-23 12:22:47] Chatbot Transaction Log
+----------------------------------------------------------------------
+QUESTION: which component
+STANDALONE REWRITE: Which component is causing the warning state in the 3 vehicles that are currently in a warning state.
+GENERATED T-SQL: SELECT TOP 3 v.reg_no, c.component 
+FROM vehicles v 
+INNER JOIN component_wear_state c ON v.id = c.vehicle_id 
+WHERE c.health_score BETWEEN 10.0 AND 30.0 
+ORDER BY c.health_score ASC
+STATUS: success
+ROWS RETURNED: 3
+======================================================================

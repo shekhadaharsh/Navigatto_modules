@@ -20,31 +20,36 @@ def ensure_wear_state_initialized(db: Session, vehicle_id: str):
     """
     Checks if component_wear_state is populated for all components.
     If not, reads from component_base_life or inserts defaults.
+    Optimized to fetch all components in a single query.
     """
-    for component, def_life in DEFAULT_BASE_LIFE.items():
-        count = db.query(ComponentWearState).filter(
-            ComponentWearState.vehicle_id == vehicle_id,
-            ComponentWearState.component == component
-        ).count()
+    existing = db.query(ComponentWearState.component).filter(
+        ComponentWearState.vehicle_id == vehicle_id
+    ).all()
+    existing_components = {c[0] for c in existing}
+    
+    needed = [comp for comp in DEFAULT_BASE_LIFE.keys() if comp not in existing_components]
+    if not needed:
+        return
         
-        if count == 0:
-            # Check base life config
-            base_life_record = db.query(ComponentBaseLife).filter(
-                ComponentBaseLife.vehicle_id == vehicle_id,
-                ComponentBaseLife.component == component
-            ).first()
+    base_life_records = db.query(ComponentBaseLife).filter(
+        ComponentBaseLife.vehicle_id == vehicle_id,
+        ComponentBaseLife.component.in_(needed)
+    ).all()
+    base_life_map = {r.component: r.base_life for r in base_life_records}
+    
+    for component in needed:
+        def_life = DEFAULT_BASE_LIFE[component]
+        base_life = base_life_map.get(component, def_life)
             
-            base_life = base_life_record.base_life if base_life_record else def_life
-                
-            new_state = ComponentWearState(
-                id=str(uuid.uuid4()),
-                vehicle_id=vehicle_id,
-                component=component,
-                accumulated_wear=0.0,
-                base_life=base_life,
-                last_updated=datetime.utcnow()
-            )
-            db.add(new_state)
+        new_state = ComponentWearState(
+            id=str(uuid.uuid4()),
+            vehicle_id=vehicle_id,
+            component=component,
+            accumulated_wear=0.0,
+            base_life=base_life,
+            last_updated=datetime.utcnow()
+        )
+        db.add(new_state)
     db.commit()
 
 

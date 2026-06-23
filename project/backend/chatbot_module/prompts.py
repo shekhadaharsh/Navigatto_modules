@@ -81,8 +81,14 @@ This is a fleet telematics database. Key tables:
 - drivers: Driver master (driver_id, driver_name, is_active)
 - vehicles: Vehicle master (id as uniqueidentifier, reg_no, vehicle_name, make, model, fuel_type)
 - journey_scores: Per-trip driver score and fuel theft detection (driver_score, theft_occurred)
-- component_wear_state: Current component health (health_score, rul, accumulated_wear) — READ rul/health_score directly, do NOT recompute them
+- component_wear_state: Current component health (health_score, rul, accumulated_wear)
+  * health_score is stored as a percentage value from 0.00 to 100.00 (e.g. 25.0 means 25%, NOT 0.25).
+  * Warning state is defined as health_score BETWEEN 10.0 AND 30.0.
+  * Critical/Urgent state is defined as health_score < 10.0.
+  * ALWAYS read rul and health_score directly, do NOT recompute them.
 - maintenance_alerts: Alerts when component health crosses threshold
+  * alert_level is nvarchar(10) ('warning', 'critical', or 'urgent')
+  * acknowledged is bit (0 means active/unacknowledged, 1 means acknowledged/resolved)
 - journey_fuel_logs: Fuel monitoring per trip (fuel theft, refuel events)
 - raw_telemetry: High-frequency sensor data (OBD, GPS, RPM, temperature)
 - battery/brake/clutch/engine/tire_wear_events: Per-trip component wear logs

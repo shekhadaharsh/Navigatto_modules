@@ -6,7 +6,7 @@ Provides all endpoints for component health tracking, alerts, and telemetry stre
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, func
 from typing import Optional, List
 from database.db import get_db
 
@@ -96,11 +96,14 @@ def get_vehicle_health(vehicle_id: str, db: Session = Depends(get_db)):
     # Run the engines dynamically to calculate wear based on existing raw telemetry
     try:
         ensure_wear_state_initialized(db, vehicle_id)
-        process_vehicle_brakes(db, vehicle_id, v.reg_no)
-        process_vehicle_clutch(db, vehicle_id, v.reg_no)
-        process_vehicle_tires(db, vehicle_id, v.reg_no)
-        process_vehicle_battery(db, vehicle_id, v.reg_no)
-        process_vehicle_engine(db, vehicle_id, v.reg_no)
+        max_telemetry_ts = db.query(func.max(RawTelemetry.ts)).filter(
+            RawTelemetry.vehicle_id == vehicle_id
+        ).scalar()
+        process_vehicle_brakes(db, vehicle_id, v.reg_no, max_telemetry_ts)
+        process_vehicle_clutch(db, vehicle_id, v.reg_no, max_telemetry_ts)
+        process_vehicle_tires(db, vehicle_id, v.reg_no, max_telemetry_ts)
+        process_vehicle_battery(db, vehicle_id, v.reg_no, max_telemetry_ts)
+        process_vehicle_engine(db, vehicle_id, v.reg_no, max_telemetry_ts)
         run_alert_check(db)
     except Exception as e:
         print(f"Error executing wear engines dynamically for vehicle {v.reg_no}: {e}")

@@ -26,6 +26,16 @@ def run_alert_check(db: Session):
     rows = db.query(ComponentWearState).all()
     alerts_created = 0
 
+    # Bulk fetch all open alerts to avoid N+1 count queries in the loop
+    open_alerts = db.query(
+        MaintenanceAlert.vehicle_id, 
+        MaintenanceAlert.component, 
+        MaintenanceAlert.alert_level
+    ).filter(
+        MaintenanceAlert.acknowledged == False
+    ).all()
+    open_alerts_set = {(a.vehicle_id, a.component, a.alert_level) for a in open_alerts}
+
     for row in rows:
         vid, component, rul, health = (row.vehicle_id, row.component, row.rul, row.health_score)
         rul    = float(rul)    if rul    is not None else 0.0
@@ -43,13 +53,7 @@ def run_alert_check(db: Session):
         else:
             continue
 
-        # Check if same level alert is already open (unacknowledged)
-        already_open = db.query(MaintenanceAlert).filter(
-            MaintenanceAlert.vehicle_id == vid,
-            MaintenanceAlert.component == component,
-            MaintenanceAlert.alert_level == level,
-            MaintenanceAlert.acknowledged == False
-        ).count()
+        already_open = 1 if (vid, component, level) in open_alerts_set else 0
 
         if already_open == 0:
             last_not_val = datetime.utcnow() if level in ['urgent', 'critical'] else None
