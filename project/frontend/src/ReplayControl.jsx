@@ -100,7 +100,7 @@ export default function ReplayControl() {
   return (
     <div className="relative inline-block" ref={dropdownRef}>
       {/* Main pill button */}
-      <div className={`flex items-center rounded-lg overflow-hidden shadow-sm border text-sm font-medium ${borderColor} ${bgColor}`}>
+      <div className={`flex items-center rounded-full overflow-hidden shadow-sm border text-xs font-semibold ${borderColor} ${bgColor}`}>
 
         {/* Status label */}
         <div className="flex items-center gap-1.5 px-3 py-1.5 select-none">

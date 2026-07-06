@@ -2,7 +2,7 @@ import sys
 import os
 
 # Ensure backend directory is in the path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 print("Running offline syntax and import checks for the modified components...")
 

@@ -221,7 +221,8 @@ def get_all_drivers(background_tasks: BackgroundTasks, db: Session = Depends(get
             Vehicle.vehicle_type,
             Trip.Total_Odometer,
             Trip.engine_total_hour,
-            JourneyScore.driver_score
+            JourneyScore.driver_score,
+            Vehicle.reg_no
         )
         .join(JourneyScore, JourneyScore.trip_id == Trip.trip_id, isouter=True)
         .join(Vehicle, Vehicle.id == Trip.vehicle_id, isouter=True)
@@ -282,7 +283,7 @@ def get_all_drivers(background_tasks: BackgroundTasks, db: Session = Depends(get
 
         # Latest trip info (first item due to DESC sort order)
         latest = trips[0]
-        vehicle_id = latest.vehicle_id or "N/A"
+        vehicle_id = latest.reg_no or latest.vehicle_id or "N/A"
         vehicle_type = latest.vehicle_type or "Unknown"
         total_odometer = latest.Total_Odometer or 0.0
         engine_hours = latest.engine_total_hour or 0.0

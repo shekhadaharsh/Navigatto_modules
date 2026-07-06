@@ -131,6 +131,26 @@ def inject_trip(payload: InjectTripRequest, db: Session = Depends(get_db)):
     trip_id = _generate_trip_id(db)
     now = datetime.datetime.now()
 
+    # Fetch latest non-zero odometer/engine hours from the vehicle's trips
+    last_trip_odo = (
+        db.query(Trip)
+        .filter(Trip.vehicle_id == real_v_id, Trip.Total_Odometer > 0.0)
+        .order_by(Trip.trip_start.desc())
+        .first()
+    )
+    last_odo = last_trip_odo.Total_Odometer if last_trip_odo else 50000.0
+
+    last_trip_eng = (
+        db.query(Trip)
+        .filter(Trip.vehicle_id == real_v_id, Trip.engine_total_hour > 0.0)
+        .order_by(Trip.trip_start.desc())
+        .first()
+    )
+    last_eng = last_trip_eng.engine_total_hour if last_trip_eng else 1000.0
+
+    current_odo = round(last_odo + payload.distance_km, 2)
+    current_eng = round(last_eng + (payload.duration_min / 60.0), 2)
+
     # 4. Create Trip record
     trip = Trip(
         trip_id             = trip_id,
@@ -163,8 +183,8 @@ def inject_trip(payload: InjectTripRequest, db: Session = Depends(get_db)):
         fuel_efficiency_kmpl= round(payload.distance_km / payload.actual_fuel_used_l, 2) if payload.actual_fuel_used_l > 0 else 0.0,
         refuel_L            = 0.0,
         # Odometer/engine hours — carry forward from latest vehicle trip
-        engine_total_hour   = 0.0,
-        Total_Odometer      = 0.0,
+        engine_total_hour   = current_eng,
+        Total_Odometer      = current_odo,
         # Additional data
         load_pct            = 68.0,
         temp_celsius        = payload.coolant_temp,

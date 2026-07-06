@@ -15,7 +15,6 @@ from driver_module.routes import router as driver_router
 from fuel_module.routes import router as fuel_router
 from maintenance_module.routes import router as maint_router
 from simulation_module.routes import router as sim_router
-from chatbot_module.routes import router as chatbot_router
 
 # ─────────────────────────────────────────
 # Create DB tables on startup
@@ -135,19 +134,26 @@ replay_manager = ReplayManager()
 # ─────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Run database schema migrations
+    # Run database schema migrations & warmup
     try:
-        from database.db import run_migrations
+        from database.db import run_migrations, SessionLocal
         run_migrations()
+        # Warm up connection pool & vehicle wear states in background
+        def _warmup_all():
+            try:
+                db = SessionLocal()
+                from maintenance_module.routes import prewarm_dashboard_cache
+                prewarm_dashboard_cache(db)
+                db.close()
+                print("[Lifespan] All fleet vehicles warmed up and cached.")
+            except Exception as e:
+                print(f"[Lifespan] Background warmup error: {e}")
+        asyncio.create_task(asyncio.to_thread(_warmup_all))
     except Exception as e:
-        print(f"[Lifespan] Database migration failed: {e}")
+        print(f"[Lifespan] Database migration/warmup failed: {e}")
 
-    # Pre-load chatbot schema and embedding models on startup
-    try:
-        from chatbot_module.schema_service import load_schema
-        load_schema()
-    except Exception as e:
-        print(f"[Lifespan] Error pre-loading schema & models: {e}")
+    # Chatbot pre-loading disabled to optimize startup time and memory footprint.
+    pass
 
     # Start background reminder scheduler for critical vehicle alerts
     reminder_task = None
@@ -198,7 +204,6 @@ app.include_router(driver_router)
 app.include_router(fuel_router)
 app.include_router(maint_router)
 app.include_router(sim_router)
-app.include_router(chatbot_router)
 
 
 

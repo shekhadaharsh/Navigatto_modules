@@ -21,30 +21,24 @@ def main():
     print("⚠️  Ensure your Redis Docker container is running! (Check the script comments for the command)\n")
     
     # Define commands with 'start cmd /k' to force visible pop-up windows on Windows
-    backend_cmd = 'start cmd /k "TITLE Navigatto_Backend && python -m uvicorn main:app --reload --port 8000"'
+    backend_cmd = 'start cmd /k "TITLE Navigatto_Backend && python -m uvicorn main:app --reload --reload-exclude *.db --reload-exclude *.log --port 8000"'
     celery_cmd = 'start cmd /k "TITLE Navigatto_Celery && python -m celery -A maintenance_module.celery_app worker --loglevel=info -P solo"'
     frontend_cmd = 'start cmd /k "TITLE Navigatto_Frontend && npm run dev"'
-    chatbot_logger_cmd = 'start cmd /k "TITLE Navigatto_Chatbot_Logs && python chatbot_logger.py"'
     
     try:
         # 1. Start Backend
-        print("[1/4] Starting FastAPI Backend...")
+        print("[1/3] Starting FastAPI Backend...")
         subprocess.Popen(backend_cmd, cwd="backend", shell=True)
         time.sleep(2) # Give backend a second to initialize
         
         # 2. Start Celery Worker
-        print("[2/4] Starting Celery Worker...")
+        print("[2/3] Starting Celery Worker...")
         subprocess.Popen(celery_cmd, cwd="backend", shell=True)
         time.sleep(2)
         
         # 3. Start Frontend
-        print("[3/4] Starting React/Vite Frontend...")
+        print("[3/3] Starting React/Vite Frontend...")
         subprocess.Popen(frontend_cmd, cwd="frontend", shell=True)
-        time.sleep(2)
-
-        # 4. Start Chatbot Logs CMD Console
-        print("[4/4] Starting Chatbot T-SQL logs CMD window...")
-        subprocess.Popen(chatbot_logger_cmd, cwd="backend", shell=True)
         
         print("\n✅ All services started in separate terminal windows!")
         print("🛑 Press Ctrl+C in THIS window to kill all services and exit.")
@@ -59,7 +53,6 @@ def main():
         subprocess.call('taskkill /F /T /FI "WINDOWTITLE eq Navigatto_Backend*"', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.call('taskkill /F /T /FI "WINDOWTITLE eq Navigatto_Celery*"', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.call('taskkill /F /T /FI "WINDOWTITLE eq Navigatto_Frontend*"', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.call('taskkill /F /T /FI "WINDOWTITLE eq Navigatto_Chatbot_Logs*"', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         print("✅ Shutdown complete.")
         sys.exit(0)
 
