@@ -1,6 +1,4 @@
-import sys
-import os
-from datetime import datetime, timedelta
+ import datetime, timedelta
 import random
 
 # Add project path to sys.path

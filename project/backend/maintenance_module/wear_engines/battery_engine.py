@@ -5,7 +5,7 @@ Vehicle Maintenance Wear and Alert Engines
 --------------------------------------------
 Calculates wear increments and alerts based on FMC650 sensor data.
 Supports incremental processing to prevent double-counting.
-"""
+""" 
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session

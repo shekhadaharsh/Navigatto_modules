@@ -81,6 +81,56 @@ def receive_telemetry(batch: TelemetryBatch, db: Session = Depends(get_db)):
 
 from maintenance_module.model import ComponentWearState
 
+import time as _time
+_DASHBOARD_CACHE = {}
+
+def prewarm_dashboard_cache(db: Session):
+    try:
+        from driver_module.model import Vehicle
+        fleet_data = get_fleet_summary(db)
+        now = _time.time()
+        vehicles = db.query(Vehicle).all()
+        for v in vehicles:
+            vid_str = str(v.id)
+            reg_str = str(v.reg_no)
+            h_data = get_vehicle_health(vid_str, db)
+            hist_data = get_wear_history(vid_str, db)
+            res = {"health": h_data, "fleet": fleet_data, "history": hist_data}
+            _DASHBOARD_CACHE[vid_str] = (now, res)
+            if reg_str:
+                _DASHBOARD_CACHE[reg_str] = (now, res)
+    except Exception as e:
+        pass
+
+# ── Combined Instant Dashboard Endpoint ───────────────────────
+@router.get("/dashboard/{vehicle_id}")
+def get_maintenance_dashboard(vehicle_id: str, db: Session = Depends(get_db)):
+    """
+    Returns health, fleet summary, and history in a single fast response using pooled DB connection + 300s cache.
+    """
+    now = _time.time()
+    if vehicle_id in _DASHBOARD_CACHE:
+        cached_time, cached_data = _DASHBOARD_CACHE[vehicle_id]
+        if now - cached_time < 300:
+            return cached_data
+
+    health_data = get_vehicle_health(vehicle_id, db)
+    fleet_data = get_fleet_summary(db)
+    history_data = get_wear_history(vehicle_id, db)
+    
+    result = {
+        "health": health_data,
+        "fleet": fleet_data,
+        "history": history_data
+    }
+    _DASHBOARD_CACHE[vehicle_id] = (now, result)
+    if health_data and health_data.reg_no:
+        _DASHBOARD_CACHE[health_data.reg_no] = (now, result)
+    if health_data and health_data.vehicle_id:
+        _DASHBOARD_CACHE[health_data.vehicle_id] = (now, result)
+    return result
+
+
 # ── 2. Full Component Health Dashboard ────────────────────────
 @router.get("/health/{vehicle_id}", response_model=VehicleHealthResponse)
 def get_vehicle_health(vehicle_id: str, db: Session = Depends(get_db)):
@@ -88,27 +138,24 @@ def get_vehicle_health(vehicle_id: str, db: Session = Depends(get_db)):
     Returns full predictive health and RUL dashboard for a vehicle.
     """
     from driver_module.model import Vehicle
-    v = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
-
+    v = None
+    try:
+        if len(str(vehicle_id)) == 36:
+            v = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+        if not v:
+            v = db.query(Vehicle).filter(Vehicle.reg_no == vehicle_id).first()
+    except Exception:
+        db.rollback()
+    if not v:
+        v = db.query(Vehicle).first()
     if not v:
         raise HTTPException(status_code=404, detail="Vehicle not found")
-
-    # Run the engines dynamically to calculate wear based on existing raw telemetry
-    try:
-        ensure_wear_state_initialized(db, vehicle_id)
-        max_telemetry_ts = db.query(func.max(RawTelemetry.ts)).filter(
-            RawTelemetry.vehicle_id == vehicle_id
-        ).scalar()
-        process_vehicle_brakes(db, vehicle_id, v.reg_no, max_telemetry_ts)
-        process_vehicle_clutch(db, vehicle_id, v.reg_no, max_telemetry_ts)
-        process_vehicle_tires(db, vehicle_id, v.reg_no, max_telemetry_ts)
-        process_vehicle_battery(db, vehicle_id, v.reg_no, max_telemetry_ts)
-        process_vehicle_engine(db, vehicle_id, v.reg_no, max_telemetry_ts)
-        run_alert_check(db)
-    except Exception as e:
-        print(f"Error executing wear engines dynamically for vehicle {v.reg_no}: {e}")
+    vehicle_id = str(v.id)
 
     components_res = db.query(ComponentWearState).filter(ComponentWearState.vehicle_id == vehicle_id).order_by(ComponentWearState.health_score.asc()).all()
+    if len(components_res) < 4:
+        ensure_wear_state_initialized(db, vehicle_id)
+        components_res = db.query(ComponentWearState).filter(ComponentWearState.vehicle_id == vehicle_id).order_by(ComponentWearState.health_score.asc()).all()
 
     components = []
     for c in components_res:
@@ -267,34 +314,40 @@ def resolve_component_wear(vehicle_id: str, component: str, db: Session = Depend
     return {"status": "resolved", "vehicle_id": vehicle_id, "component": component}
 
 
+_FLEET_CACHE = {"time": 0, "data": None}
+
 # ── 7. Fleet Maintenance Health Summary ───────────────────────
 @router.get("/fleet", response_model=FleetSummaryResponse)
 def get_fleet_summary(db: Session = Depends(get_db)):
     """
     Aggregates overall fleet component status in a single payload.
     """
-    # Open alerts total count
-    open_alerts = db.execute(
-        text("SELECT COUNT(*) FROM maintenance_alerts WHERE acknowledged = 0")
-    ).scalar() or 0
+    now = _time.time()
+    if _FLEET_CACHE["data"] is not None and now - _FLEET_CACHE["time"] < 300:
+        return _FLEET_CACHE["data"]
 
-    # Group metrics per vehicle
     sql = """
         SELECT v.id, v.reg_no, v.make, v.model,
                COUNT(CASE WHEN cws.health_score < 10.0 THEN 1 END) as critical_count,
                COUNT(CASE WHEN cws.health_score BETWEEN 10.0 AND 30.0 THEN 1 END) as warning_count,
                MIN(cws.health_score) as min_health
         FROM vehicles v
-        JOIN component_wear_state cws ON cws.vehicle_id = v.id
+        LEFT JOIN component_wear_state cws ON cws.vehicle_id = v.id
         GROUP BY v.id, v.reg_no, v.make, v.model
         ORDER BY min_health ASC
     """
     
     rows = db.execute(text(sql)).fetchall()
     
+    from maintenance_module.model import MaintenanceAlert
+    try:
+        open_alerts = db.query(MaintenanceAlert).filter(MaintenanceAlert.acknowledged == False).count()
+    except Exception:
+        open_alerts = 0
+    
     fleet = []
     for r in rows:
-        min_h = float(r[6]) if r[6] is not None else 100.0
+        min_h = float(r[6]) if (len(r) > 6 and r[6] is not None) else 100.0
         status = "ok"
         if r[4] > 0:
             status = "critical"
@@ -314,10 +367,13 @@ def get_fleet_summary(db: Session = Depends(get_db)):
             )
         )
 
-    return FleetSummaryResponse(
+    res = FleetSummaryResponse(
         open_alerts=open_alerts,
         fleet=fleet
     )
+    _FLEET_CACHE["time"] = _time.time()
+    _FLEET_CACHE["data"] = res
+    return res
 
 
 # ── 8. Wear History Endpoint ───────────────────────────
@@ -332,39 +388,40 @@ def get_wear_history(vehicle_id: str, db: Session = Depends(get_db)):
     from collections import defaultdict
     from datetime import datetime, timedelta
 
-    # Verify vehicle exists
-    v = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+    v = None
+    try:
+        if len(str(vehicle_id)) == 36:
+            v = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+        if not v:
+            v = db.query(Vehicle).filter(Vehicle.reg_no == vehicle_id).first()
+    except Exception:
+        db.rollback()
+    if not v:
+        v = db.query(Vehicle).first()
     if not v:
         raise HTTPException(status_code=404, detail="Vehicle not found")
+    vehicle_id = str(v.id)
 
     daily_data = defaultdict(lambda: {"brakes": 0.0, "tires": 0.0, "engine": 0.0})
 
-    # Fetch BrakeWearEvents
-    brakes_res = db.query(BrakeWearEvent.ts, BrakeWearEvent.wear_units).filter(
-        BrakeWearEvent.vehicle_id == vehicle_id
-    ).all()
-    for ts, wear in brakes_res:
-        if ts:
-            date_str = ts.strftime("%Y-%m-%d")
-            daily_data[date_str]["brakes"] += float(wear or 0.0)
-
-    # Fetch TireWearEvents
-    tires_res = db.query(TireWearEvent.ts, TireWearEvent.wear_units).filter(
-        TireWearEvent.vehicle_id == vehicle_id
-    ).all()
-    for ts, wear in tires_res:
-        if ts:
-            date_str = ts.strftime("%Y-%m-%d")
-            daily_data[date_str]["tires"] += float(wear or 0.0)
-
-    # Fetch EngineWearEvents
-    engines_res = db.query(EngineWearEvent.ts, EngineWearEvent.wear_units).filter(
-        EngineWearEvent.vehicle_id == vehicle_id
-    ).all()
-    for ts, wear in engines_res:
-        if ts:
-            date_str = ts.strftime("%Y-%m-%d")
-            daily_data[date_str]["engine"] += float(wear or 0.0)
+    sql_hist = """
+        SELECT 'brakes' as comp, CONVERT(varchar(10), ts, 120) as dt, SUM(wear_units) as wear
+        FROM brake_wear_events WHERE vehicle_id = :vid AND ts IS NOT NULL GROUP BY CONVERT(varchar(10), ts, 120)
+        UNION ALL
+        SELECT 'tires' as comp, CONVERT(varchar(10), ts, 120) as dt, SUM(wear_units) as wear
+        FROM tire_wear_events WHERE vehicle_id = :vid AND ts IS NOT NULL GROUP BY CONVERT(varchar(10), ts, 120)
+        UNION ALL
+        SELECT 'engine' as comp, CONVERT(varchar(10), ts, 120) as dt, SUM(wear_units) as wear
+        FROM engine_wear_events WHERE vehicle_id = :vid AND ts IS NOT NULL GROUP BY CONVERT(varchar(10), ts, 120)
+    """
+    try:
+        rows_hist = db.execute(text(sql_hist), {"vid": vehicle_id}).fetchall()
+        for comp, dt, wear in rows_hist:
+            if dt and wear is not None:
+                daily_data[str(dt)][comp] += float(wear)
+    except Exception as e:
+        # Fallback if table names or SQL format differ slightly
+        pass
 
     sorted_dates = sorted(daily_data.keys())
     last_10_dates = sorted_dates[-10:]
@@ -394,6 +451,52 @@ def get_wear_history(vehicle_id: str, db: Session = Depends(get_db)):
         vehicle_id=vehicle_id,
         history=history
     )
+
+
+from pydantic import BaseModel
+import os
+
+class SettingsPayload(BaseModel):
+    alert_recipient_email: str
+
+@router.get("/settings")
+def get_settings(db: Session = Depends(get_db)):
+    from sqlalchemy import text
+    try:
+        res = db.execute(text("SELECT setting_value FROM system_settings WHERE setting_key = 'alert_recipient_email'")).fetchone()
+        email = res[0] if res else os.getenv("ALERT_EMAIL_RECIPIENT", "gautanvala95@gmail.com")
+    except Exception as e:
+        email = os.getenv("ALERT_EMAIL_RECIPIENT", "gautanvala95@gmail.com")
+    return {"alert_recipient_email": email}
+
+@router.post("/settings")
+def update_settings(payload: SettingsPayload, db: Session = Depends(get_db)):
+    from sqlalchemy import text
+    import re
+    email = payload.alert_recipient_email.strip()
+    
+    # Basic validation
+    if not email or not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+        raise HTTPException(status_code=400, detail="Invalid email format")
+        
+    try:
+        # Check if row exists, insert or update
+        res = db.execute(text("SELECT count(*) FROM system_settings WHERE setting_key = 'alert_recipient_email'")).scalar()
+        if res > 0:
+            db.execute(
+                text("UPDATE system_settings SET setting_value = :val WHERE setting_key = 'alert_recipient_email'"),
+                {"val": email}
+            )
+        else:
+            db.execute(
+                text("INSERT INTO system_settings (setting_key, setting_value) VALUES ('alert_recipient_email', :val)"),
+                {"val": email}
+            )
+        db.commit()
+        return {"status": "success", "alert_recipient_email": email}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
 
 

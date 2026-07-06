@@ -54,8 +54,12 @@ else:
         )
     engine = create_engine(
         connection_string,
-        echo=False,          # Set True to see raw SQL queries in terminal
-        fast_executemany=True
+        echo=False,
+        fast_executemany=True,
+        pool_size=20,
+        max_overflow=30,
+        pool_pre_ping=True,
+        pool_recycle=300
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -163,6 +167,40 @@ def run_migrations():
                     print("[Migration] Column added successfully.")
                 else:
                     print("[Migration] 'last_notified_at' column already exists.")
+
+            # 3. System settings table migration and seed
+            default_email = os.getenv("ALERT_EMAIL_RECIPIENT", "gautanvala95@gmail.com")
+            if DB_TYPE.lower() == "sqlite":
+                conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS system_settings (
+                    setting_key VARCHAR(100) PRIMARY KEY,
+                    setting_value TEXT
+                );
+                """))
+                conn.execute(text("""
+                INSERT OR IGNORE INTO system_settings (setting_key, setting_value)
+                VALUES ('alert_recipient_email', :default_val);
+                """), {"default_val": default_email})
+                conn.commit()
+            else:
+                conn.execute(text("""
+                IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='system_settings' and xtype='U')
+                BEGIN
+                    CREATE TABLE dbo.system_settings (
+                        setting_key VARCHAR(100) PRIMARY KEY,
+                        setting_value NVARCHAR(MAX) NULL
+                    );
+                END
+                """))
+                conn.execute(text("""
+                IF NOT EXISTS (SELECT * FROM dbo.system_settings WHERE setting_key = 'alert_recipient_email')
+                BEGIN
+                    INSERT INTO dbo.system_settings (setting_key, setting_value)
+                    VALUES ('alert_recipient_email', :default_val);
+                END
+                """), {"default_val": default_email})
+                conn.commit()
+            print("[Migration] System settings table checked/created and seeded.")
         except Exception as e:
             conn.rollback()
             print(f"[Migration] Error executing migration: {e}")
