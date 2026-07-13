@@ -2,7 +2,7 @@ import React from 'react';
 import {
   ArrowLeft, ArrowRight, Compass, Truck, Navigation, Clock, MapPin, Gauge, Activity,
   TrendingUp, TrendingDown, ShieldAlert, ShieldCheck, Droplet, AlertTriangle, RefreshCw,
-  CheckCircle2, ChevronRight, Wrench, Battery, Thermometer
+  CheckCircle2, ChevronRight, Wrench, Battery, Thermometer, Upload
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, Cell, LineChart, Line, XAxis, YAxis,
@@ -25,8 +25,44 @@ export default function TripDiagnostics({
   openMaintenanceDashboard,
   maintHealthData,
   isSidebarCollapsed,
-  setIsSidebarCollapsed
+  setIsSidebarCollapsed,
+  handleRecompute,
+  handleAckAlert
 }) {
+  const handleReceiptUpload = async (logId, file) => {
+    if (!file) return;
+    
+    const formData = new FormData();
+    formData.append("file", file);
+    
+    try {
+      const response = await fetch(`/api/fuel/upload-receipt/${logId}`, {
+        method: "POST",
+        body: formData,
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        alert(errorData.detail || "Failed to upload receipt.");
+        return;
+      }
+      
+      const result = await response.json();
+      if (result.status === "THEFT_DETECTED") {
+        alert(`🚨 Alert! Discrepancy of ${result.discrepancy_liters}L detected between receipt and sensor!`);
+      } else {
+        alert("Refuel bill parsed and reconciled successfully!");
+      }
+      
+      if (handleRecompute) {
+        handleRecompute();
+      }
+    } catch (error) {
+      console.error("Error uploading receipt:", error);
+      alert("An error occurred while uploading the receipt.");
+    }
+  };
+
   return (
               <section className={`flex-1 bg-slate-50 flex flex-col overflow-hidden relative ${mobileViewTab === 'details' ? 'flex' : 'hidden lg:flex'
                 }`}>
@@ -452,75 +488,146 @@ export default function TripDiagnostics({
 
                         {/* -------------------- CARD 2: FUEL THEFT CARD -------------------- */}
                         <div className="bg-white rounded-3xl border border-slate-200/80 p-6 shadow-premium flex flex-col justify-between hover:shadow-premium-lg transition-shadow">
-                          <div>
-                            <div className="flex items-center justify-between border-b border-slate-100 pb-3.5 mb-4">
-                              <h3 className="text-sm font-extrabold text-slate-800 font-outfit tracking-wide flex items-center gap-2 uppercase">
-                                <Droplet className="w-4.5 h-4.5 text-brand-500" /> Fuel Theft Detection
-                              </h3>
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${journeyDetails?.fuel_theft?.detected
-                                  ? 'bg-rose-50 text-rose-700 border-rose-200'
-                                  : 'bg-blue-50 text-blue-700 border-blue-200'
-                                }`}>
-                                {journeyDetails?.fuel_theft?.detected ? 'ALERT HIGH RISK' : 'NORMAL SECURED'}
-                              </span>
-                            </div>
-
-                            {/* Status pulsing bar */}
-                            <div className={`p-4 rounded-2xl flex flex-col sm:flex-row xl:flex-col 2xl:flex-row items-start sm:items-center xl:items-start 2xl:items-center gap-4 mb-5 border transition-all ${journeyDetails?.fuel_theft?.detected
-                                ? 'bg-rose-50/50 border-rose-200/50 pulse-glow-red'
-                                : 'bg-blue-50/50 border-blue-200/50'
-                              }`}>
-                              <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${journeyDetails?.fuel_theft?.detected ? 'bg-rose-500 text-white' : 'bg-blue-500 text-white'
-                                }`}>
-                                {journeyDetails?.fuel_theft?.detected ? <ShieldAlert className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-xs text-slate-400 font-bold tracking-wide uppercase">Fuel Security Monitor</p>
-                                <p className="text-sm font-extrabold text-slate-800 font-outfit break-words">
-                                  {journeyDetails?.fuel_theft?.detected
-                                    ? `Fuel theft event suspected (Confidence: ${journeyDetails.fuel_theft.confidence}%)`
-                                    : "No suspicious fuel variations identified."
-                                  }
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Theft Forensics Details */}
-                          <div className="bg-slate-50 rounded-2xl border border-slate-200/50 p-4 flex-1 flex flex-col justify-center">
-                            <span className="text-[9px] text-slate-400 font-bold tracking-wide uppercase block mb-2">Suspected Forensics Check</span>
-                            {journeyDetails?.fuel_theft?.detected ? (
-                              <ul className="space-y-2 text-xs font-semibold text-slate-700">
-                                <div className="flex items-center justify-between mb-3 p-2.5 bg-rose-100/60 border border-rose-200 rounded-xl">
-                                    <span className="text-xs font-bold text-rose-700">Total Fuel Stolen</span>
-                                    <span className="text-sm font-black text-rose-700 font-outfit">
-                                        {journeyDetails.fuel_theft.total_theft_liters?.toFixed(2)} L
+                          {(() => {
+                            const hasRefuelTheft = journeyDetails?.fuel_theft?.refuel_stops?.some(s => s.is_fuel_theft) || false;
+                            const refuelTheftAmount = journeyDetails?.fuel_theft?.refuel_stops?.find(s => s.is_fuel_theft)?.theft_amount_liters || 0.0;
+                            const isTheft = journeyDetails?.fuel_theft?.detected || hasRefuelTheft;
+                            const confidence = hasRefuelTheft ? 90.0 : (journeyDetails?.fuel_theft?.confidence || 5.0);
+                            return (
+                              <>
+                                <div>
+                                  <div className="flex items-center justify-between border-b border-slate-100 pb-3.5 mb-4">
+                                    <h3 className="text-sm font-extrabold text-slate-800 font-outfit tracking-wide flex items-center gap-2 uppercase">
+                                      <Droplet className="w-4.5 h-4.5 text-brand-500" /> Fuel Theft Detection
+                                    </h3>
+                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${isTheft
+                                        ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                        : 'bg-blue-50 text-blue-700 border-blue-200'
+                                      }`}>
+                                      {isTheft ? 'ALERT HIGH RISK' : 'NORMAL SECURED'}
                                     </span>
+                                  </div>
+
+                                  {/* Status pulsing bar */}
+                                  <div className={`p-4 rounded-2xl flex flex-col sm:flex-row xl:flex-col 2xl:flex-row items-start sm:items-center xl:items-start 2xl:items-center gap-4 mb-5 border transition-all ${isTheft
+                                      ? 'bg-rose-50/50 border-rose-200/50 pulse-glow-red'
+                                      : 'bg-blue-50/50 border-blue-200/50'
+                                    }`}>
+                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${isTheft ? 'bg-rose-500 text-white' : 'bg-blue-500 text-white'
+                                      }`}>
+                                      {isTheft ? <ShieldAlert className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-xs text-slate-400 font-bold tracking-wide uppercase">Fuel Security Monitor</p>
+                                      <p className="text-sm font-extrabold text-slate-800 font-outfit break-words">
+                                        {isTheft
+                                          ? `Fuel theft event suspected (Confidence: ${confidence}%)`
+                                          : "No suspicious fuel variations identified."
+                                        }
+                                      </p>
+                                    </div>
+                                  </div>
                                 </div>
-                                {journeyDetails.fuel_theft.reasons.map((r, ri) => (
-                                    <li key={ri} className="flex items-start gap-2 text-rose-600 bg-rose-50/50 border border-rose-100/50 p-2.5 rounded-xl">
-                                        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
-                                        <span>{r}</span>
-                                    </li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <div className="space-y-2 text-xs font-semibold text-slate-500">
-                                <div className="flex items-center gap-2 py-1 border-b border-slate-200/30">
-                                  <CheckCircle2 className="w-4.5 h-4.5 text-blue-500 shrink-0" />
-                                  <span>No drops detected when ignition was OFF</span>
+
+                                {/* Theft Forensics Details */}
+                                <div className="bg-slate-50 rounded-2xl border border-slate-200/50 p-4 flex-1 flex flex-col justify-center">
+                                  <span className="text-[9px] text-slate-400 font-bold tracking-wide uppercase block mb-2">Suspected Forensics Check</span>
+                                  {isTheft ? (
+                                    <ul className="space-y-2 text-xs font-semibold text-slate-700">
+                                      <div className="flex items-center justify-between mb-3 p-2.5 bg-rose-100/60 border border-rose-200 rounded-xl">
+                                          <span className="text-xs font-bold text-rose-700">Total Fuel Stolen</span>
+                                          <span className="text-sm font-black text-rose-700 font-outfit">
+                                              {((journeyDetails?.fuel_theft?.total_theft_liters || 0) + refuelTheftAmount).toFixed(2)} L
+                                          </span>
+                                      </div>
+                                      
+                                      {/* Standard theft reasons from backend */}
+                                      {journeyDetails?.fuel_theft?.reasons?.map((r, ri) => (
+                                          <li key={ri} className="flex items-start gap-2 text-rose-600 bg-rose-50/50 border border-rose-100/50 p-2.5 rounded-xl">
+                                              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
+                                              <span>{r}</span>
+                                          </li>
+                                      ))}
+
+                                      {/* Refuel discrepancy details */}
+                                      {hasRefuelTheft && (
+                                        <li className="flex items-start gap-2 text-rose-600 bg-rose-50/50 border border-rose-100/50 p-2.5 rounded-xl">
+                                            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
+                                            <span>Refuel theft: {refuelTheftAmount.toFixed(1)} L discrepancy detected between receipt and sensor</span>
+                                        </li>
+                                      )}
+                                    </ul>
+                                  ) : (
+                                    <div className="space-y-2 text-xs font-semibold text-slate-500">
+                                      <div className="flex items-center gap-2 py-1 border-b border-slate-200/30">
+                                        <CheckCircle2 className="w-4.5 h-4.5 text-blue-500 shrink-0" />
+                                        <span>No drops detected when ignition was OFF</span>
+                                      </div>
+                                      <div className="flex items-center gap-2 py-1 border-b border-slate-200/30">
+                                        <CheckCircle2 className="w-4.5 h-4.5 text-blue-500 shrink-0" />
+                                        <span>No refueling theft detected</span>
+                                      </div>
+                                      <div className="flex items-center gap-2">
+                                        <CheckCircle2 className="w-4.5 h-4.5 text-blue-500 shrink-0" />
+                                        <span>No sudden fuel drop while the vehicle was running</span>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Refueling Events / Receipt Uploads list */}
+                                  {journeyDetails?.fuel_theft?.refuel_stops && journeyDetails.fuel_theft.refuel_stops.length > 0 && (
+                                    <div className="mt-4 border-t border-slate-200/50 pt-3.5">
+                                      <span className="text-[9px] text-slate-400 font-bold tracking-wide uppercase block mb-2">Refueling Logs & Receipts</span>
+                                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                        {journeyDetails.fuel_theft.refuel_stops.map((stop) => (
+                                          <div key={stop.id} className="p-3 bg-white rounded-xl border border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+                                            <div className="min-w-0">
+                                              <div className="flex flex-wrap items-center gap-2">
+                                                <span className="text-xs font-bold text-slate-700">Refueled: {stop.refuel_amount_liters?.toFixed(1)} L</span>
+                                                {stop.receipt_uploaded ? (
+                                                  stop.is_fuel_theft ? (
+                                                    <span className="text-[9px] px-1.5 py-0.5 bg-rose-50 text-rose-600 border border-rose-200 rounded font-bold uppercase tracking-wider">Theft Detected</span>
+                                                  ) : (
+                                                    <span className="text-[9px] px-1.5 py-0.5 bg-emerald-50 text-emerald-600 border border-emerald-200 rounded font-bold uppercase tracking-wider">Reconciled</span>
+                                                  )
+                                                ) : (
+                                                  <span className="text-[9px] px-1.5 py-0.5 bg-amber-50 text-amber-600 border border-amber-200 rounded font-bold uppercase tracking-wider">Pending Bill</span>
+                                                )}
+                                              </div>
+                                              <span className="text-[10px] text-slate-400 block mt-0.5">Time: {new Date(stop.event_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                                              {stop.receipt_uploaded && (
+                                                <div className="text-[10px] text-slate-500 mt-1">
+                                                  Receipt Qty: <strong className="text-slate-700">{stop.receipt_amount_liters?.toFixed(1)} L</strong>
+                                                  {stop.is_fuel_theft && (
+                                                    <span className="text-rose-600 font-bold ml-1.5">
+                                                      ({stop.theft_amount_liters?.toFixed(1)} L short!)
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              )}
+                                            </div>
+                                            
+                                            <div className="shrink-0 flex items-center gap-2">
+                                              <label className="cursor-pointer text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-brand-200 bg-brand-50/10 text-brand-700 hover:bg-brand-50 transition-colors flex items-center gap-1.5">
+                                                <Upload className="w-3.5 h-3.5" />
+                                                <span>{stop.receipt_uploaded ? "Update Bill" : "Upload Bill"}</span>
+                                                <input 
+                                                  type="file" 
+                                                  accept="image/*" 
+                                                  className="hidden" 
+                                                  onChange={(e) => handleReceiptUpload(stop.id, e.target.files[0])}
+                                                />
+                                              </label>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
-                                <div className="flex items-center gap-2 py-1 border-b border-slate-200/30">
-                                  <CheckCircle2 className="w-4.5 h-4.5 text-blue-500 shrink-0" />
-                                  <span>No refueling theft detected</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <CheckCircle2 className="w-4.5 h-4.5 text-blue-500 shrink-0" />
-                                  <span>No sudden fuel drop while the vehicle was running</span>
-                                </div>
-                              </div>
-                            )}
-                          </div>
+                              </>
+                            );
+                          })()}
                         </div>
 
                         {/* -------------------- CARD 3: EXPECTED FUEL CHART -------------------- */}

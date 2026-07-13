@@ -1,8 +1,9 @@
+import os
 from celery import Celery
 
 # Initialize Celery app
-# Assuming Redis is running locally on default port 6379
-redis_url = 'redis://127.0.0.1:6379/0'
+# Assuming Redis is running locally on default port 6379 or configured in environment
+redis_url = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 
 celery_app = Celery(
     "maintenance_tasks",

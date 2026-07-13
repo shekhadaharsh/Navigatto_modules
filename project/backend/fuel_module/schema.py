@@ -22,6 +22,16 @@ class FuelTheftEvent(BaseModel):
     gps_lng: Optional[float] = None
 
 
+class RefuelStopEvent(BaseModel):
+    """One individual refueling record from journey_fuel_logs."""
+    id: int
+    event_time: str
+    refuel_amount_liters: Optional[float] = 0.0
+    receipt_uploaded: bool = False
+    receipt_amount_liters: Optional[float] = 0.0
+    is_fuel_theft: bool = False
+    theft_amount_liters: Optional[float] = 0.0
+
 class FuelTheftResponse(BaseModel):
     """
     Shape consumed by the React frontend's Fuel Theft card.
@@ -34,3 +44,5 @@ class FuelTheftResponse(BaseModel):
     theft_type: Optional[str] = None
     reasons: List[str] = []
     events: List[FuelTheftEvent] = []
+    refuel_stops: List[RefuelStopEvent] = []
+

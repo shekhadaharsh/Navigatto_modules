@@ -287,6 +287,11 @@ def acknowledge_alert(alert_id: str, db: Session = Depends(get_db)):
     ).update({"accumulated_wear": 0.0, "last_updated": datetime.utcnow()})
 
     db.commit()
+    
+    # Invalidate staled dashboard and fleet caches
+    _DASHBOARD_CACHE.clear()
+    _FLEET_CACHE["data"] = None
+    
     return {"status": "acknowledged", "alert_id": alert_id, "component": alert.component}
 
 
@@ -311,6 +316,11 @@ def resolve_component_wear(vehicle_id: str, component: str, db: Session = Depend
     ).update({"acknowledged": True, "ack_at": datetime.utcnow()})
 
     db.commit()
+    
+    # Invalidate staled dashboard and fleet caches
+    _DASHBOARD_CACHE.clear()
+    _FLEET_CACHE["data"] = None
+    
     return {"status": "resolved", "vehicle_id": vehicle_id, "component": component}
 
 
@@ -405,14 +415,14 @@ def get_wear_history(vehicle_id: str, db: Session = Depends(get_db)):
     daily_data = defaultdict(lambda: {"brakes": 0.0, "tires": 0.0, "engine": 0.0})
 
     sql_hist = """
-        SELECT 'brakes' as comp, CONVERT(varchar(10), ts, 120) as dt, SUM(wear_units) as wear
-        FROM brake_wear_events WHERE vehicle_id = :vid AND ts IS NOT NULL GROUP BY CONVERT(varchar(10), ts, 120)
+        SELECT 'brakes' as comp, CAST(ts AS DATE) as dt, SUM(wear_units) as wear
+        FROM brake_wear_events WHERE vehicle_id = :vid AND ts IS NOT NULL GROUP BY CAST(ts AS DATE)
         UNION ALL
-        SELECT 'tires' as comp, CONVERT(varchar(10), ts, 120) as dt, SUM(wear_units) as wear
-        FROM tire_wear_events WHERE vehicle_id = :vid AND ts IS NOT NULL GROUP BY CONVERT(varchar(10), ts, 120)
+        SELECT 'tires' as comp, CAST(ts AS DATE) as dt, SUM(wear_units) as wear
+        FROM tire_wear_events WHERE vehicle_id = :vid AND ts IS NOT NULL GROUP BY CAST(ts AS DATE)
         UNION ALL
-        SELECT 'engine' as comp, CONVERT(varchar(10), ts, 120) as dt, SUM(wear_units) as wear
-        FROM engine_wear_events WHERE vehicle_id = :vid AND ts IS NOT NULL GROUP BY CONVERT(varchar(10), ts, 120)
+        SELECT 'engine' as comp, CAST(ts AS DATE) as dt, SUM(wear_units) as wear
+        FROM engine_wear_events WHERE vehicle_id = :vid AND ts IS NOT NULL GROUP BY CAST(ts AS DATE)
     """
     try:
         rows_hist = db.execute(text(sql_hist), {"vid": vehicle_id}).fetchall()

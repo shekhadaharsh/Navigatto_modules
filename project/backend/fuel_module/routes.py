@@ -8,7 +8,7 @@ Fuel Module — Routes & Helpers
 
 import asyncio
 import json
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, File, UploadFile, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import func
@@ -30,22 +30,38 @@ router = APIRouter(prefix="/fuel", tags=["Fuel Theft Detection"])
 # ─────────────────────────────────────────
 def get_fuel_theft_for_trip(db: Session, driver_id: str, trip_id: str) -> dict:
     """
-    Query journey_fuel_logs1 JOIN fmc_raw_packets for all theft-flagged rows
+    Query journey_fuel_logs1 JOIN fmc_raw_packets for all theft-flagged or refuel rows
     for the given driver + trip.  Returns a dict that
     matches the 'fuel_theft' key in the details response.
     """
-    theft_rows = (
+    all_fuel_rows = (
         db.query(JourneyFuelLog1, FmcRawPacket)
         .join(FmcRawPacket, JourneyFuelLog1.raw_packet_id == FmcRawPacket.id)
         .filter(
             FmcRawPacket.driver_id == driver_id,
             FmcRawPacket.trip_id == trip_id,
-            JourneyFuelLog1.is_fuel_theft == True,
+            (JourneyFuelLog1.is_fuel_theft == True) | (JourneyFuelLog1.is_refuel == True),
         )
         .order_by(FmcRawPacket.event_time)
         .all()
     )
             
+    theft_rows = [r for r in all_fuel_rows if r[0].is_fuel_theft]
+    refuel_rows = [r for r in all_fuel_rows if r[0].is_refuel]
+
+    refuel_events = [
+        {
+            "id": log.id,
+            "event_time": str(pkt.event_time),
+            "refuel_amount_liters": log.refuel_amount_liters or 0.0,
+            "receipt_uploaded": bool(log.receipt_uploaded),
+            "receipt_amount_liters": log.receipt_amount_liters or 0.0,
+            "is_fuel_theft": bool(log.is_fuel_theft),
+            "theft_amount_liters": log.theft_amount_liters or 0.0,
+        }
+        for log, pkt in refuel_rows
+    ]
+
     if not theft_rows:
         return {
             "detected": False,
@@ -55,6 +71,7 @@ def get_fuel_theft_for_trip(db: Session, driver_id: str, trip_id: str) -> dict:
             "theft_type": None,
             "reasons": [],
             "events": [],
+            "refuel_stops": refuel_events,
         }
 
     # ── Aggregate across all theft rows ──
@@ -119,6 +136,7 @@ def get_fuel_theft_for_trip(db: Session, driver_id: str, trip_id: str) -> dict:
         "theft_type": primary_type,
         "reasons": reasons,
         "events": events,
+        "refuel_stops": refuel_events,
     }
 
 
@@ -292,3 +310,83 @@ def predict_fuel_endpoint(
         "variance_pct":      variance_pct,
         "model":             "xgboost_fuel_prediction_model",
     }
+
+
+# ─────────────────────────────────────────
+# RECEIPT UPLOAD & RECONCILIATION ENDPOINT
+# POST /fuel/upload-receipt/{log_id}
+# ─────────────────────────────────────────
+@router.post(
+    "/upload-receipt/{log_id}",
+    summary="Upload a fuel receipt and reconcile with telematics refuel event",
+)
+async def upload_receipt_endpoint(
+    log_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    from fuel_module.receipt_service import extract_receipt_details
+    
+    # 1. Fetch the specific refuel log entry
+    log = db.query(JourneyFuelLog1).filter(JourneyFuelLog1.id == log_id).first()
+    if not log:
+        raise HTTPException(status_code=404, detail=f"Refuel log entry with ID {log_id} not found.")
+
+    if not log.is_refuel:
+        raise HTTPException(status_code=400, detail="This log entry is not a refueling stop event.")
+
+    # 2. Read file bytes and parse using Groq Vision API
+    image_bytes = await file.read()
+    mime_type = file.content_type or "image/jpeg"
+    
+    extracted = extract_receipt_details(image_bytes, mime_type=mime_type)
+    
+    # Loud and clear console logs for debugging
+    print("\n" + "="*60)
+    print("🔥 [AI OCR RECEIPT PARSING RESULT]")
+    print(f"   - Raw Response Data: {extracted}")
+    print(f"   - Extracted Liters: {extracted.get('liters')} L")
+    print(f"   - Extracted Price: {extracted.get('price')}")
+    print(f"   - Station Name: {extracted.get('station_name')}")
+    print(f"   - Transaction Time: {extracted.get('refuel_time')}")
+    print("="*60 + "\n")
+
+    receipt_liters = extracted.get("liters")
+    if receipt_liters is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Failed to extract fuel quantity from receipt. Please ensure the receipt image is clear."
+        )
+
+    # 3. Calculate difference (Reconciliation)
+    sensor_refuel = log.refuel_amount_liters or 0.0
+    discrepancy = float(receipt_liters) - float(sensor_refuel)
+    
+    # 4. Save updates to DB
+    log.receipt_uploaded = True
+    log.receipt_amount_liters = float(receipt_liters)
+    
+    # If difference > 5.0 Liters, mark it as REFUEL_THEFT
+    if discrepancy > 5.0:
+        log.is_fuel_theft = True
+        log.theft_amount_liters = round(discrepancy, 2)
+        log.theft_type = "REFUEL_THEFT"
+    else:
+        # If mismatch is within threshold, clear any prior theft flags for this specific log
+        log.is_fuel_theft = False
+        log.theft_amount_liters = 0.0
+        log.theft_type = None
+
+    db.commit()
+    db.refresh(log)
+
+    return {
+        "status": "THEFT_DETECTED" if log.is_fuel_theft else "RECONCILED",
+        "receipt_liters": receipt_liters,
+        "sensor_refuel_liters": sensor_refuel,
+        "discrepancy_liters": round(discrepancy, 2),
+        "theft_type": log.theft_type,
+        "station_name": extracted.get("station_name"),
+        "refuel_time": extracted.get("refuel_time")
+    }
+

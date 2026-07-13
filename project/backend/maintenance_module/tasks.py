@@ -41,11 +41,12 @@ def process_vehicle_wear_task(vehicle_id: str, reg_no: str):
 @celery_app.task(name="send_alert_notification_task")
 def send_alert_notification_task(vehicle_reg_no: str, component: str, level: str, message: str, rul: float, health: float, is_reminder: bool = False):
     """
-    Background worker to send email notifications for critical alerts. Supports reminder flag.
+    Background worker to send email and WhatsApp notifications for critical alerts. Supports reminder flag.
     """
-    from maintenance_module.notification_service import send_email_alert
+    from maintenance_module.notification_service import send_email_alert, send_whatsapp_alert
     
     try:
+        # 1. Send Email Alert
         send_email_alert(
             vehicle_reg_no=vehicle_reg_no,
             component=component,
@@ -56,4 +57,19 @@ def send_alert_notification_task(vehicle_reg_no: str, component: str, level: str
             is_reminder=is_reminder
         )
     except Exception as e:
-        logging.error(f"Failed to execute send_alert_notification_task: {e}")
+        logging.error(f"Failed to send email alert in task: {e}")
+
+    try:
+        # 2. Send WhatsApp Alert
+        send_whatsapp_alert(
+            vehicle_reg_no=vehicle_reg_no,
+            component=component,
+            level=level,
+            message=message,
+            rul=rul,
+            health=health,
+            is_reminder=is_reminder
+        )
+    except Exception as e:
+        logging.error(f"Failed to send WhatsApp alert in task: {e}")
+
