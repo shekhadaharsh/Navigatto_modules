@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   Wrench, XCircle, Search, Filter, AlertTriangle, AlertCircle, CheckCircle2,
-  Activity, Thermometer, Battery, Compass, ChevronRight, RefreshCw, Clock, Info, Truck
+  Activity, Thermometer, Battery, Compass, ChevronRight, RefreshCw, Clock, Info, Truck, ArrowLeft
 } from 'lucide-react';
 import {
   ResponsiveContainer, AreaChart, Area, CartesianGrid, XAxis, YAxis, Tooltip, Legend
@@ -19,7 +19,8 @@ export default function MaintenanceDashboardModal({
   maintFleetSummary: propFleetSummary,
   maintHistoryData: propHistoryData,
   isLoadingMaintHistory: propIsLoadingHistory,
-  openMaintenanceDashboard
+  openMaintenanceDashboard,
+  handleResolveComponent
 }) {
   const [localActiveTab, setLocalActiveTab] = React.useState('vehicle');
   const [maintFilterStatus, setMaintFilterStatus] = React.useState('all');
@@ -41,9 +42,19 @@ export default function MaintenanceDashboardModal({
                     {/* Modal Header */}
                     <div className="px-6 py-5 bg-slate-50 border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-4 shrink-0">
                       <div className="flex items-center gap-3">
-                        <div className="p-3 bg-brand-500 text-white rounded-2xl shadow-brand-glow">
-                          <Wrench className="w-6 h-6 animate-pulse" />
-                        </div>
+                        {activeMaintTab === 'vehicle' ? (
+                          <button
+                            onClick={() => setActiveMaintTab('fleet')}
+                            title="Back to Fleet Status"
+                            className="p-3 bg-brand-50 hover:bg-brand-100 text-brand-600 rounded-2xl transition-all active:scale-95 border-0 cursor-pointer flex items-center justify-center outline-none"
+                          >
+                            <ArrowLeft className="w-6 h-6" />
+                          </button>
+                        ) : (
+                          <div className="p-3 bg-brand-500 text-white rounded-2xl shadow-brand-glow">
+                            <Wrench className="w-6 h-6 animate-pulse" />
+                          </div>
+                        )}
                         <div>
                           <h2 className="text-lg font-black font-outfit text-slate-900 tracking-tight flex items-center gap-2">
                             Predictive Vehicle Diagnostics Centre

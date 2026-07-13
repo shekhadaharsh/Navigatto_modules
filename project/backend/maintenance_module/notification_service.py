@@ -74,3 +74,47 @@ def send_email_alert(vehicle_reg_no: str, component: str, level: str, message: s
     except Exception as e:
         logging.error(f"Failed to send email alert: {e}")
         return False
+
+
+def send_whatsapp_alert(vehicle_reg_no: str, component: str, level: str, message: str, rul: float, health: float, is_reminder: bool = False):
+    """
+    Sends a WhatsApp message via Twilio for critical maintenance alerts. Supports reminder flag.
+    """
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+    from_number = os.getenv("TWILIO_WHATSAPP_FROM")
+    to_number = os.getenv("ALERT_WHATSAPP_RECIPIENT")
+
+    subj_prefix = "[REMINDER] " if is_reminder else ""
+
+    if not all([account_sid, auth_token, from_number, to_number]):
+        logging.warning("Twilio credentials missing in .env. Skipping WhatsApp notification.")
+        # Print to console for debugging if credentials are not set
+        print(f"\n[WHATSAPP NOTIFICATION MOCK] To: {to_number}")
+        print(f"Message: {subj_prefix}{level.upper()} ALERT: The {component} on vehicle {vehicle_reg_no} is currently showing a health score of {health:.2f}%. Remaining distance is around {rul:.1f} km. {message}\n")
+        return False
+
+    try:
+        from twilio.rest import Client
+        client = Client(account_sid, auth_token)
+        
+        body_text = (
+            f"🚨 *{subj_prefix}FleetIQ ALERT* 🚨\n\n"
+            f"Vehicle: *{vehicle_reg_no}*\n"
+            f"Component: *{component.upper()}*\n"
+            f"Health Score: *{health:.2f}%*\n"
+            f"Remaining Life: *{rul:.1f} km*\n\n"
+            f"Details: {message}"
+        )
+        
+        msg = client.messages.create(
+            from_=from_number,
+            body=body_text,
+            to=to_number
+        )
+        logging.info(f"Successfully sent {level} WhatsApp alert (Reminder: {is_reminder}, SID: {msg.sid}) for {vehicle_reg_no} - {component}")
+        return True
+    except Exception as e:
+        logging.error(f"Failed to send WhatsApp alert: {e}")
+        return False
+

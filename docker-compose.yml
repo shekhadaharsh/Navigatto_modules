@@ -1,6 +1,13 @@
 version: '3.8'
 
 services:
+  redis:
+    image: redis:alpine
+    container_name: navigatto_redis
+    ports:
+      - "6379:6379"
+    restart: always
+
   backend:
     build:
       context: ./project/backend
@@ -10,6 +17,27 @@ services:
       - "8000:8000"
     env_file:
       - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - PYTHONPATH=/app
+    depends_on:
+      - redis
+    restart: always
+
+  celery_worker:
+    build:
+      context: ./project/backend
+      dockerfile: Dockerfile
+    container_name: navigatto_celery
+    command: python -m celery -A maintenance_module.celery_app worker --loglevel=info -P solo
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - PYTHONPATH=/app
+    depends_on:
+      - redis
+      - backend
     restart: always
 
   frontend:

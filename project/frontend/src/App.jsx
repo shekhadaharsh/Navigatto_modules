@@ -81,7 +81,7 @@ export default function App() {
     e.preventDefault();
     setIsSavingSettings(true);
     setSettingsStatus(null);
-    
+
     fetch('/api/maintenance/settings', {
       method: 'POST',
       headers: {
@@ -294,16 +294,16 @@ export default function App() {
           if (existingIdx !== -1) {
             const updatedAlerts = [...prev];
             const existingAlert = updatedAlerts[existingIdx];
-            
+
             const accumulatedAmount = (existingAlert.theft_amount_liters || 0) + (payload.theft_amount_liters || 0);
-            
+
             const mergedAlert = {
               ...payload,
               theft_amount_liters: accumulatedAmount,
               accumulated_count: (existingAlert.accumulated_count || 1) + 1,
               original_amount: payload.theft_amount_liters
             };
-            
+
             updatedAlerts.splice(existingIdx, 1);
             if (isReplayRunningRef.current && !globalMuteRef.current && !dismissedToastIdsRef.current.has(`${mergedAlert.driver_id}-${mergedAlert.trip_id}`)) {
               setShowAlertToast(true);
@@ -405,7 +405,7 @@ export default function App() {
             { vehicle_id: "VH004", reg_no: "DL-04-DD-3456", make: "Tata", model: "LPT", critical_count: 0, warning_count: 0, min_health: 85.0, overall_status: "ok" }
           ]
         });
-        
+
         // Mock wear history
         const mockHistory = [];
         const today = new Date();
@@ -445,52 +445,53 @@ export default function App() {
   };
 
   const handleAckAlert = async (alertId) => {
-    if (isUsingMock) {
-      // Find the component being resolved from the current mock state
-      const resolvedAlert = journeyDetails?.maintenance?.alerts?.find(a => a.id === alertId);
-      let targetComponent = "";
-      if (resolvedAlert) {
-        const issueLower = (resolvedAlert.issue || "").toLowerCase();
-        const detailLower = (resolvedAlert.detail || "").toLowerCase();
-        if (issueLower.includes("engine") || detailLower.includes("engine")) targetComponent = "engine";
-        else if (issueLower.includes("brake") || detailLower.includes("brake")) targetComponent = "brake";
-        else if (issueLower.includes("tire") || detailLower.includes("tire")) targetComponent = "tire";
-        else if (issueLower.includes("battery") || detailLower.includes("battery")) targetComponent = "battery";
-      }
+    // 1. Optimistic UI Update: instantly update state to 100% health & clear alert locally
+    const resolvedAlert = journeyDetails?.maintenance?.alerts?.find(a => a.id === alertId);
+    let targetComponent = "";
+    if (resolvedAlert) {
+      const issueLower = (resolvedAlert.issue || "").toLowerCase();
+      const detailLower = (resolvedAlert.detail || "").toLowerCase();
+      if (issueLower.includes("engine") || detailLower.includes("engine")) targetComponent = "engine";
+      else if (issueLower.includes("brake") || detailLower.includes("brake")) targetComponent = "brake";
+      else if (issueLower.includes("tire") || detailLower.includes("tire")) targetComponent = "tire";
+      else if (issueLower.includes("battery") || detailLower.includes("battery")) targetComponent = "battery";
+    }
 
-      setJourneyDetails(prev => {
-        if (!prev) return prev;
-        let updatedHealthScores = { ...(prev.maintenance.health_scores || { brake: 100, tire: 100, battery: 100, engine: 100 }) };
-        if (targetComponent) {
-          updatedHealthScores[targetComponent] = 100;
+    setJourneyDetails(prev => {
+      if (!prev) return prev;
+      let updatedHealthScores = { ...(prev.maintenance.health_scores || { brake: 100, tire: 100, battery: 100, engine: 100 }) };
+      if (targetComponent) {
+        updatedHealthScores[targetComponent] = 100;
+      }
+      return {
+        ...prev,
+        maintenance: {
+          ...prev.maintenance,
+          alerts: prev.maintenance.alerts.filter(a => a.id !== alertId),
+          alert_count: Math.max(0, prev.maintenance.alert_count - 1),
+          priority: prev.maintenance.alerts.filter(a => a.id !== alertId).length > 0 ? "Warning" : "OK",
+          health_scores: updatedHealthScores
         }
+      };
+    });
+
+    if (targetComponent) {
+      setMaintHealthData(prev => {
+        if (!prev || !prev.components) return prev;
         return {
           ...prev,
-          maintenance: {
-            ...prev.maintenance,
-            alerts: prev.maintenance.alerts.filter(a => a.id !== alertId),
-            alert_count: Math.max(0, prev.maintenance.alert_count - 1),
-            priority: prev.maintenance.alerts.filter(a => a.id !== alertId).length > 0 ? "Warning" : "OK",
-            health_scores: updatedHealthScores
-          }
+          components: prev.components.map(c => {
+            if (c.component === targetComponent) {
+              return { ...c, health_score: 100.0, rul: c.base_life || 50000.0, accumulated_wear: 0.0, status: "ok" };
+            }
+            return c;
+          })
         };
       });
+    }
 
-      if (targetComponent) {
-        setMaintHealthData(prev => {
-          if (!prev || !prev.components) return prev;
-          return {
-            ...prev,
-            components: prev.components.map(c => {
-              if (c.component === targetComponent) {
-                return { ...c, health_score: 100.0, rul: c.base_life || 50000.0, accumulated_wear: 0.0 };
-              }
-              return c;
-            })
-          };
-        });
-      }
-      // Acknowledged mock alert state successfully updated
+    if (isUsingMock) {
+      // Mock flow complete
     } else {
       try {
         const res = await fetch(`/api/maintenance/alerts/${alertId}/ack`, { method: 'POST' });
@@ -511,31 +512,34 @@ export default function App() {
   };
 
   const handleResolveComponent = async (componentName, vehicleId) => {
-    if (isUsingMock) {
-      setMaintHealthData(prev => {
-        if (!prev || !prev.components) return prev;
-        return {
-          ...prev,
-          components: prev.components.map(c => {
-            if (c.component === componentName) {
-              return { ...c, health_score: 100.0, rul: c.base_life || 50000.0, accumulated_wear: 0.0, status: "ok" };
-            }
-            return c;
-          })
-        };
-      });
-      setJourneyDetails(prev => {
-        if (!prev) return prev;
-        let updatedHealthScores = { ...(prev.maintenance.health_scores || { brake: 100, tire: 100, battery: 100, engine: 100 }) };
-        updatedHealthScores[componentName] = 100;
-        return {
-          ...prev,
-          maintenance: {
-            ...prev.maintenance,
-            health_scores: updatedHealthScores
+    // 1. Optimistic UI Update: instantly set health status to 100% locally
+    setMaintHealthData(prev => {
+      if (!prev || !prev.components) return prev;
+      return {
+        ...prev,
+        components: prev.components.map(c => {
+          if (c.component === componentName) {
+            return { ...c, health_score: 100.0, rul: c.base_life || 50000.0, accumulated_wear: 0.0, status: "ok" };
           }
-        };
-      });
+          return c;
+        })
+      };
+    });
+    setJourneyDetails(prev => {
+      if (!prev) return prev;
+      let updatedHealthScores = { ...(prev.maintenance.health_scores || { brake: 100, tire: 100, battery: 100, engine: 100 }) };
+      updatedHealthScores[componentName] = 100;
+      return {
+        ...prev,
+        maintenance: {
+          ...prev.maintenance,
+          health_scores: updatedHealthScores
+        }
+      };
+    });
+
+    if (isUsingMock) {
+      // Mock flow complete
     } else {
       try {
         const res = await fetch(`/api/maintenance/components/${vehicleId}/${componentName}/resolve`, { method: 'POST' });
@@ -643,25 +647,24 @@ export default function App() {
       {/* -------------------- HEADER NAVBAR -------------------- */}
       <header className="h-16 flex items-center justify-between px-6 bg-white border-b border-slate-200/80 shrink-0 shadow-sm z-10">
         <div className="flex items-center gap-8">
-            {/* Logo Container */}
-            <div className="flex items-center gap-2 select-none">
-              <h1 className="text-2xl font-black font-outfit tracking-tighter text-[#1d4ed8]">
-                NAVIGATTO
-              </h1>
-              <span className="text-[#1d4ed8] font-bold text-[10px] px-2.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 tracking-wide uppercase shadow-sm">
-                Live GPS
-              </span>
-            </div>
+          {/* Logo Container */}
+          <div className="flex items-center gap-2 select-none">
+            <h1 className="text-2xl font-black font-outfit tracking-tighter text-[#1d4ed8]">
+              NAVIGATTO
+            </h1>
+            <span className="text-[#1d4ed8] font-bold text-[10px] px-2.5 py-0.5 rounded-full bg-blue-50 border border-blue-200 tracking-wide uppercase shadow-sm">
+              Live GPS
+            </span>
+          </div>
 
           {/* Global Stats Pill Bar - hidden on mobile/tablet */}
           <div className="hidden lg:flex items-center gap-6 text-xs font-semibold border-l border-slate-200 pl-6">
             <button
               onClick={() => fetchDrivers()}
-              className={`flex items-center gap-2 px-3.5 py-1.5 border rounded-full shadow-sm transition-all duration-300 cursor-pointer ${
-                sqlError
+              className={`flex items-center gap-2 px-3.5 py-1.5 border rounded-full shadow-sm transition-all duration-300 cursor-pointer ${sqlError
                   ? 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100/70'
                   : 'bg-blue-50/70 border-blue-200 text-[#1d4ed8] hover:bg-blue-100/70'
-              }`}
+                }`}
               title="Click to re-verify live SQL Server database connection"
             >
               <span className={`w-2.5 h-2.5 rounded-full ${sqlError ? 'bg-rose-500 animate-pulse' : 'bg-[#1d4ed8] pulse-glow-green'}`}></span>
@@ -698,7 +701,7 @@ export default function App() {
             <Truck className="w-3.5 h-3.5" />
             <span>Vehicles Status</span>
           </button>
-          
+
           {/* Device Simulator Button */}
           <button
             onClick={() => {
@@ -712,7 +715,7 @@ export default function App() {
           </button>
 
           <ReplayControl />
-          
+
           {/* Settings Button */}
           <button
             onClick={() => setIsSettingsOpen(true)}
@@ -746,11 +749,10 @@ export default function App() {
                 fetchDrivers();
                 setIsMobileMenuOpen(false);
               }}
-              className={`w-full flex items-center justify-between p-3 border rounded-xl shadow-sm transition-all duration-300 cursor-pointer ${
-                sqlError
+              className={`w-full flex items-center justify-between p-3 border rounded-xl shadow-sm transition-all duration-300 cursor-pointer ${sqlError
                   ? 'bg-rose-50 border-rose-200 text-rose-700'
                   : 'bg-blue-50/70 border-blue-200 text-[#1d4ed8]'
-              }`}
+                }`}
             >
               <div className="flex items-center gap-2">
                 <span className={`w-2.5 h-2.5 rounded-full ${sqlError ? 'bg-rose-500 animate-pulse' : 'bg-[#1d4ed8] pulse-glow-green'}`}></span>
@@ -892,6 +894,8 @@ export default function App() {
                 maintHealthData={maintHealthData}
                 isSidebarCollapsed={isSidebarCollapsed}
                 setIsSidebarCollapsed={setIsSidebarCollapsed}
+                handleRecompute={handleRecompute}
+                handleAckAlert={handleAckAlert}
               />
               <MaintenanceDashboardModal
                 isOpen={isMaintDialogOpen}
@@ -906,6 +910,7 @@ export default function App() {
                 maintHistoryData={maintHistoryData}
                 isLoadingMaintHistory={isLoadingMaintHistory}
                 openMaintenanceDashboard={openMaintenanceDashboard}
+                handleResolveComponent={handleResolveComponent}
               />
               <DeviceSimulator
                 isOpen={isSimDialogOpen}
