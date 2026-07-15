@@ -95,7 +95,9 @@ def process_vehicle_brakes(db: Session, vehicle_id: str, reg_no: str, max_teleme
                 severity_multi = float(model['multi_regressor'].predict(input_df)[0])
                 wear_units = float(model['wear_regressor'].predict(input_df)[0])
             else:
-                is_harsh    = accel_x < HARSH_BRAKE_G
+                from .utils import get_vehicle_g_thresholds
+                harsh_brake_g, _, _ = get_vehicle_g_thresholds(db, vehicle_id)
+                is_harsh    = accel_x < harsh_brake_g
                 is_heavy    = gvw > (gvw_max * HEAVY_LOAD_RATIO)
                 is_downhill = gps_slope < DOWNHILL_SLOPE
 

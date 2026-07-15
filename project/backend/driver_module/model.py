@@ -38,6 +38,8 @@ class Vehicle(Base):
     vehicle_type = Column(String)
     make         = Column(String)
     model        = Column(String)
+    vin          = Column(String)
+    year         = Column(Integer)
     is_active    = Column(Boolean)
 
     # Relationships

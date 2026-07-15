@@ -198,9 +198,109 @@ def run_migrations():
                     INSERT INTO dbo.system_settings (setting_key, setting_value)
                     VALUES ('alert_recipient_email', :default_val);
                 END
-                """), {"default_val": default_email})
+                                """), {"default_val": default_email})
                 conn.commit()
             print("[Migration] System settings table checked/created and seeded.")
+
+            # 4. FleetIQ automatic base life generation cache tables and columns
+            if DB_TYPE.lower() == "sqlite":
+                pragma_v = conn.execute(text("PRAGMA table_info(vehicles)")).fetchall()
+                v_cols = [r[1] for r in pragma_v]
+                if "vin" not in v_cols:
+                    print("[Migration] Adding 'vin' column to 'vehicles' (SQLite)...")
+                    conn.execute(text("ALTER TABLE vehicles ADD COLUMN vin VARCHAR(50);"))
+                if "year" not in v_cols:
+                    print("[Migration] Adding 'year' column to 'vehicles' (SQLite)...")
+                    conn.execute(text("ALTER TABLE vehicles ADD COLUMN year INTEGER;"))
+
+                conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS vehicle_api_cache (
+                    id VARCHAR(100) PRIMARY KEY,
+                    vin VARCHAR(50) UNIQUE,
+                    make VARCHAR(100),
+                    model VARCHAR(100),
+                    year INTEGER,
+                    engine VARCHAR(100),
+                    fuel VARCHAR(50),
+                    response_json TEXT,
+                    created_at DATETIME
+                );
+                """))
+
+                conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS maintenance_schedule_cache (
+                    id VARCHAR(100) PRIMARY KEY,
+                    vehicle_id VARCHAR(100),
+                    service_item VARCHAR(255),
+                    interval_km INTEGER,
+                    interval_months INTEGER,
+                    source VARCHAR(50),
+                    created_at DATETIME
+                );
+                """))
+                conn.commit()
+                print("[Migration] FleetIQ caching tables and vehicle column updates checked/created (SQLite).")
+            else:
+                check_vin_mssql = """
+                SELECT COUNT(*) 
+                FROM sys.columns c
+                JOIN sys.tables t ON c.object_id = t.object_id
+                JOIN sys.schemas s ON t.schema_id = s.schema_id
+                WHERE t.name = 'vehicles' 
+                  AND s.name = 'dbo' 
+                  AND c.name = 'vin';
+                """
+                if not conn.execute(text(check_vin_mssql)).scalar():
+                    print("[Migration] Adding 'vin' column to 'dbo.vehicles' (MSSQL)...")
+                    conn.execute(text("ALTER TABLE dbo.vehicles ADD vin VARCHAR(50) NULL;"))
+                
+                check_year_mssql = """
+                SELECT COUNT(*) 
+                FROM sys.columns c
+                JOIN sys.tables t ON c.object_id = t.object_id
+                JOIN sys.schemas s ON t.schema_id = s.schema_id
+                WHERE t.name = 'vehicles' 
+                  AND s.name = 'dbo' 
+                  AND c.name = 'year';
+                """
+                if not conn.execute(text(check_year_mssql)).scalar():
+                    print("[Migration] Adding 'year' column to 'dbo.vehicles' (MSSQL)...")
+                    conn.execute(text("ALTER TABLE dbo.vehicles ADD [year] INT NULL;"))
+
+                conn.execute(text("""
+                IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='vehicle_api_cache' and xtype='U')
+                BEGIN
+                    CREATE TABLE dbo.vehicle_api_cache (
+                        id VARCHAR(100) PRIMARY KEY,
+                        vin VARCHAR(50) UNIQUE NOT NULL,
+                        make VARCHAR(100) NULL,
+                        model VARCHAR(100) NULL,
+                        [year] INT NULL,
+                        engine VARCHAR(100) NULL,
+                        fuel VARCHAR(50) NULL,
+                        response_json NVARCHAR(MAX) NULL,
+                        created_at DATETIME DEFAULT GETDATE()
+                    );
+                END
+                """))
+
+                conn.execute(text("""
+                IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='maintenance_schedule_cache' and xtype='U')
+                BEGIN
+                    CREATE TABLE dbo.maintenance_schedule_cache (
+                        id VARCHAR(100) PRIMARY KEY,
+                        vehicle_id UNIQUEIDENTIFIER FOREIGN KEY REFERENCES dbo.vehicles(id),
+                        service_item NVARCHAR(255) NULL,
+                        interval_km INT NULL,
+                        interval_months INT NULL,
+                        source VARCHAR(50) NULL,
+                        created_at DATETIME DEFAULT GETDATE()
+                    );
+                END
+                """))
+                conn.commit()
+                print("[Migration] FleetIQ caching tables and vehicle column updates checked/created (MSSQL).")
+
         except Exception as e:
             conn.rollback()
             print(f"[Migration] Error executing migration: {e}")
