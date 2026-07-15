@@ -48,7 +48,11 @@ export default function TripDiagnostics({
       }
       
       const result = await response.json();
-      if (result.status === "THEFT_DETECTED") {
+      if (result.theft_type === "INVALID_RECEIPT_DATE") {
+        alert(`🚨 Alert! Fraud detected: The receipt date does not match the vehicle's actual refuel date!`);
+      } else if (result.theft_type === "INVALID_RECEIPT_TIME") {
+        alert(`🚨 Alert! Fraud detected: The receipt time does not match the vehicle's actual refuel time!`);
+      } else if (result.status === "THEFT_DETECTED") {
         alert(`🚨 Alert! Discrepancy of ${result.discrepancy_liters}L detected between receipt and sensor!`);
       } else {
         alert("Refuel bill parsed and reconciled successfully!");
@@ -600,7 +604,12 @@ export default function TripDiagnostics({
                                                   Receipt Qty: <strong className="text-slate-700">{stop.receipt_amount_liters?.toFixed(1)} L</strong>
                                                   {stop.is_fuel_theft && (
                                                     <span className="text-rose-600 font-bold ml-1.5">
-                                                      ({stop.theft_amount_liters?.toFixed(1)} L short!)
+                                                      {stop.theft_type === "INVALID_RECEIPT_DATE" 
+                                                        ? "(Date Mismatch!)" 
+                                                        : stop.theft_type === "INVALID_RECEIPT_TIME" 
+                                                          ? "(Time Mismatch!)" 
+                                                          : `(${stop.theft_amount_liters?.toFixed(1)} L short!)`
+                                                      }
                                                     </span>
                                                   )}
                                                 </div>

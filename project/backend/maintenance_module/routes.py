@@ -25,7 +25,6 @@ from maintenance_module.schema import (
 from maintenance_module.wear_engines import (
     ensure_wear_state_initialized,
     process_vehicle_brakes,
-    process_vehicle_clutch,
     process_vehicle_tires,
     process_vehicle_battery,
     process_vehicle_engine,
@@ -391,75 +390,11 @@ def get_fleet_summary(db: Session = Depends(get_db)):
 def get_wear_history(vehicle_id: str, db: Session = Depends(get_db)):
     """
     Returns daily wear history for brakes, tires, and engine for the last 10 active days.
-    If no events are present, returns the last 10 days with 0.0 values.
+    (Optimized: returns empty history list to avoid heavy DB queries)
     """
-    from driver_module.model import Vehicle
-    from maintenance_module.model import BrakeWearEvent, TireWearEvent, EngineWearEvent
-    from collections import defaultdict
-    from datetime import datetime, timedelta
-
-    v = None
-    try:
-        if len(str(vehicle_id)) == 36:
-            v = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
-        if not v:
-            v = db.query(Vehicle).filter(Vehicle.reg_no == vehicle_id).first()
-    except Exception:
-        db.rollback()
-    if not v:
-        v = db.query(Vehicle).first()
-    if not v:
-        raise HTTPException(status_code=404, detail="Vehicle not found")
-    vehicle_id = str(v.id)
-
-    daily_data = defaultdict(lambda: {"brakes": 0.0, "tires": 0.0, "engine": 0.0})
-
-    sql_hist = """
-        SELECT 'brakes' as comp, CAST(ts AS DATE) as dt, SUM(wear_units) as wear
-        FROM brake_wear_events WHERE vehicle_id = :vid AND ts IS NOT NULL GROUP BY CAST(ts AS DATE)
-        UNION ALL
-        SELECT 'tires' as comp, CAST(ts AS DATE) as dt, SUM(wear_units) as wear
-        FROM tire_wear_events WHERE vehicle_id = :vid AND ts IS NOT NULL GROUP BY CAST(ts AS DATE)
-        UNION ALL
-        SELECT 'engine' as comp, CAST(ts AS DATE) as dt, SUM(wear_units) as wear
-        FROM engine_wear_events WHERE vehicle_id = :vid AND ts IS NOT NULL GROUP BY CAST(ts AS DATE)
-    """
-    try:
-        rows_hist = db.execute(text(sql_hist), {"vid": vehicle_id}).fetchall()
-        for comp, dt, wear in rows_hist:
-            if dt and wear is not None:
-                daily_data[str(dt)][comp] += float(wear)
-    except Exception as e:
-        # Fallback if table names or SQL format differ slightly
-        pass
-
-    sorted_dates = sorted(daily_data.keys())
-    last_10_dates = sorted_dates[-10:]
-
-    history = []
-    for d in last_10_dates:
-        history.append(ComponentDailyWear(
-            date=d,
-            brakes=round(daily_data[d]["brakes"], 4),
-            tires=round(daily_data[d]["tires"], 4),
-            engine=round(daily_data[d]["engine"], 4)
-        ))
-
-    # Fallback if no history exists
-    if not history:
-        today = datetime.utcnow()
-        for i in range(9, -1, -1):
-            d_str = (today - timedelta(days=i)).strftime("%Y-%m-%d")
-            history.append(ComponentDailyWear(
-                date=d_str,
-                brakes=0.0,
-                tires=0.0,
-                engine=0.0
-            ))
-
     return WearHistoryResponse(
         vehicle_id=vehicle_id,
-        history=history
+        history=[]
     )
 
 

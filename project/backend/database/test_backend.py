@@ -13,7 +13,6 @@ try:
         ComponentWearState,
         MaintenanceAlert,
         BrakeWearEvent,
-        ClutchWearEvent,
         TireWearEvent,
         BatteryWearEvent,
         EngineWearEvent,
@@ -33,7 +32,6 @@ try:
     
     from maintenance_module.wear_engines import (
         process_vehicle_brakes,
-        process_vehicle_clutch,
         process_vehicle_tires,
         process_vehicle_battery,
         process_vehicle_engine,

@@ -73,12 +73,13 @@ class AddVehicleRequest(BaseModel):
     vehicle_type: str = "Mini Truck"
     make:         Optional[str] = None
     model:        Optional[str] = None
+    vin:          Optional[str] = None
+    year:         Optional[int] = None
     is_active:    bool = True
     brake_life:   float = 50000.0
     engine_life:  float = 10000.0
     tire_life:    float = 80000.0
     battery_life: float = 5000.0
-    clutch_life:  float = 60000.0
 
 
 # ─────────────────────────────────────────
@@ -316,6 +317,7 @@ def add_vehicle(payload: AddVehicleRequest, db: Session = Depends(get_db)):
     Register a new vehicle in the dbo.vehicles table.
     Returns 409 Conflict if vehicle_id already exists.
     """
+    from maintenance_module.integration_service import VehicleIntegrationService
 
     # Convert string ID to valid UUID format for SQL Server
     real_v_id = _get_vehicle_uuid(payload.vehicle_id)
@@ -328,27 +330,78 @@ def add_vehicle(payload: AddVehicleRequest, db: Session = Depends(get_db)):
             detail=f"Vehicle '{payload.vehicle_id}' already exists in DB."
         )
 
+    # 1. Resolve vehicle details (Make, Model, Year, VIN)
+    make = payload.make
+    model = payload.model
+    year = payload.year
+    vin = payload.vin
+
+    if vin:
+        decoded = VehicleIntegrationService.decode_vin(db, vin)
+        if decoded:
+            make = make or decoded.get("make")
+            model = model or decoded.get("model")
+            year = year or decoded.get("year")
+
+    # 1.5 Create and add Vehicle first, flushing to session so foreign key constraints are met
     new_vehicle = Vehicle(
         id           = real_v_id,
         reg_no       = payload.reg_no,
-        vehicle_name = payload.vehicle_name or f"{payload.make or 'Vehicle'} {payload.model or ''}".strip(),
+        vehicle_name = payload.vehicle_name or f"{make or 'Vehicle'} {model or ''}".strip(),
         vehicle_type = payload.vehicle_type,
-        make         = payload.make,
-        model        = payload.model,
+        make         = make,
+        model        = model,
+        vin          = vin,
+        year         = year,
         is_active    = payload.is_active,
     )
     db.add(new_vehicle)
+    try:
+        db.flush()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to initialize vehicle row: {str(e)}")
+
+    # 2. Estimate initial component base life values
+    if vin or (make and model and year):
+        try:
+            baselines_dict = VehicleIntegrationService.generate_base_life(
+                db=db,
+                vehicle_id=real_v_id,
+                vehicle_type=payload.vehicle_type,
+                make=make,
+                model=model,
+                year=year,
+                vin=vin
+            )
+            brake_life = baselines_dict["brake"]
+            engine_life = baselines_dict["engine"]
+            tire_life = baselines_dict["tire"]
+            battery_life = baselines_dict["battery"]
+            print(f"[SimulatorAPI] >>> SUCCESS: Vehicle base lives AUTO-GENERATED via FleetIQ API/caching rules: brake={brake_life}, engine={engine_life}, tire={tire_life}, battery={battery_life}")
+        except Exception as e:
+            print(f"[SimulatorAPI] >>> WARNING: Failed to auto-generate base life, falling back to MANUAL request payload values: {e}")
+            brake_life = payload.brake_life
+            engine_life = payload.engine_life
+            tire_life = payload.tire_life
+            battery_life = payload.battery_life
+    else:
+        # Fallback to payload defaults
+        print(f"[SimulatorAPI] >>> INFO: No VIN or vehicle details provided. Using MANUAL request payload values: brake={payload.brake_life}, engine={payload.engine_life}, tire={payload.tire_life}, battery={payload.battery_life}")
+        brake_life = payload.brake_life
+        engine_life = payload.engine_life
+        tire_life = payload.tire_life
+        battery_life = payload.battery_life
 
     import uuid
     from maintenance_module.model import ComponentBaseLife, ComponentWearState
 
     now = datetime.datetime.now()
     baselines = [
-        ("brake", payload.brake_life, "km"),
-        ("engine", payload.engine_life, "hours"),
-        ("tire", payload.tire_life, "km"),
-        ("battery", payload.battery_life, "cycles"),
-        ("clutch", payload.clutch_life, "km"),
+        ("brake", brake_life, "km"),
+        ("engine", engine_life, "hours"),
+        ("tire", tire_life, "km"),
+        ("battery", battery_life, "cycles"),
     ]
 
     for comp_name, base_life, unit in baselines:

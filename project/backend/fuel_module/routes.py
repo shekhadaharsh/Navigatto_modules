@@ -58,6 +58,7 @@ def get_fuel_theft_for_trip(db: Session, driver_id: str, trip_id: str) -> dict:
             "receipt_amount_liters": log.receipt_amount_liters or 0.0,
             "is_fuel_theft": bool(log.is_fuel_theft),
             "theft_amount_liters": log.theft_amount_liters or 0.0,
+            "theft_type": log.theft_type,
         }
         for log, pkt in refuel_rows
     ]
@@ -104,6 +105,14 @@ def get_fuel_theft_for_trip(db: Session, driver_id: str, trip_id: str) -> dict:
         )
         reasons.append(
             f"Refuel theft: {refuel_amt:.1f} L discrepancy between receipt and sensor during refueling"
+        )
+    if "INVALID_RECEIPT_DATE" in type_counts:
+        reasons.append(
+            "Receipt Fraud: Receipt date does not match vehicle refuel date"
+        )
+    if "INVALID_RECEIPT_TIME" in type_counts:
+        reasons.append(
+            "Receipt Fraud: Receipt time does not match vehicle refuel time"
         )
     if not reasons:
         reasons.append(f"Anomalous fuel drop of {total_theft:.1f} L detected")
@@ -358,16 +367,58 @@ async def upload_receipt_endpoint(
             detail="Failed to extract fuel quantity from receipt. Please ensure the receipt image is clear."
         )
 
-    # 3. Calculate difference (Reconciliation)
+    # 3. Time-Stamp Verification (Anti-Fraud Check)
+    refuel_time_str = extracted.get("refuel_time")
+    time_fraud_detected = False
+    date_fraud_detected = False
+    
+    if refuel_time_str and log.raw_packet:
+        try:
+            from datetime import datetime
+            # Clean and normalize raw timestamp from LLM
+            clean_time_str = refuel_time_str.replace("T", " ").split(".")[0].strip()
+            
+            # Try parsing with various common formats
+            receipt_time = None
+            for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M", "%Y/%m/%d %H:%M:%S"):
+                try:
+                    receipt_time = datetime.strptime(clean_time_str, fmt)
+                    break
+                except ValueError:
+                    continue
+            
+            if receipt_time:
+                sensor_time = log.raw_packet.event_time
+                time_diff_sec = abs((sensor_time - receipt_time).total_seconds())
+                
+                # Check if dates differ
+                if sensor_time.date() != receipt_time.date():
+                    date_fraud_detected = True
+                    print(f"⚠️ [ANTI-FRAUD DETECTED] Receipt Date ({receipt_time.date()}) mismatch with Sensor Date ({sensor_time.date()})")
+                elif time_diff_sec > 3600:
+                    # Dates match, but time difference > 1 hour
+                    time_fraud_detected = True
+                    print(f"⚠️ [ANTI-FRAUD DETECTED] Receipt Time ({receipt_time}) mismatch with Sensor Time ({sensor_time}). Diff: {time_diff_sec}s")
+        except Exception as e:
+            print(f"[RECONCILE ERROR] Failed to parse timestamps: {e}")
+
+    # 4. Calculate difference (Reconciliation)
     sensor_refuel = log.refuel_amount_liters or 0.0
     discrepancy = float(receipt_liters) - float(sensor_refuel)
     
-    # 4. Save updates to DB
+    # 5. Save updates to DB
     log.receipt_uploaded = True
     log.receipt_amount_liters = float(receipt_liters)
     
-    # If difference > 5.0 Liters, mark it as REFUEL_THEFT
-    if discrepancy > 5.0:
+    if date_fraud_detected:
+        log.is_fuel_theft = True
+        log.theft_amount_liters = float(receipt_liters)
+        log.theft_type = "INVALID_RECEIPT_DATE"
+    elif time_fraud_detected:
+        log.is_fuel_theft = True
+        log.theft_amount_liters = float(receipt_liters)
+        log.theft_type = "INVALID_RECEIPT_TIME"
+    elif discrepancy > 5.0:
         log.is_fuel_theft = True
         log.theft_amount_liters = round(discrepancy, 2)
         log.theft_type = "REFUEL_THEFT"

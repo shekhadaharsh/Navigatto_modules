@@ -840,7 +840,7 @@ def get_trip_details(driver_id: str, trip_id: str, db: Session = Depends(get_db)
     ).fetchall()
 
     health_scores = {c[0]: float(c[1]) if c[1] is not None else 100.0 for c in components_res}
-    for comp in ["brake", "clutch", "tire", "battery", "engine"]:
+    for comp in ["brake", "tire", "battery", "engine"]:
         if comp not in health_scores:
             health_scores[comp] = 100.0
 

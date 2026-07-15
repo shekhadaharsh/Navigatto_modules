@@ -89,8 +89,10 @@ def process_vehicle_tires(db: Session, vehicle_id: str, reg_no: str, max_telemet
             multiplier = float(model['multi_regressor'].predict(input_df)[0])
             wear_units = float(model['wear_regressor'].predict(input_df)[0])
         else:
+            from .utils import get_vehicle_g_thresholds
+            _, harsh_corner_g, _ = get_vehicle_g_thresholds(db, vehicle_id)
             is_high_speed   = speed > HIGH_SPEED_KMH
-            is_harsh_corner = abs(lateral_g) > HARSH_CORNER_G
+            is_harsh_corner = abs(lateral_g) > harsh_corner_g
             is_overload     = gvw > (gvw_max * OVERLOAD_RATIO)
             is_rough        = vibration_rms > ROUGH_ROAD_RMS
 

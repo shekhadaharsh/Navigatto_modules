@@ -70,16 +70,14 @@ def process_vehicle_battery(db: Session, vehicle_id: str, reg_no: str, max_telem
             v_under_load = batt_v
             
             soh = round((v_under_load / V_NOMINAL) * 100.0, 2)
-
-            if v_under_load < DEEP_DISCHARGE_V:
-                event_type, base_wear = "deep_discharge", 8.0
-            elif v_under_load < COLD_CRANK_V:
-                event_type, base_wear = "cold_crank", 5.0
+            if v_under_load < COLD_CRANK_V:
+                event_type, base_wear = "cold_crank", 8.0
+            elif v_under_load < DEEP_DISCHARGE_V:
+                event_type, base_wear = "deep_discharge", 5.0
             elif idle_time > LONG_IDLE_MIN:
                 event_type, base_wear = "long_idle", 3.0
             else:
                 event_type, base_wear = "normal_start", 1.0
-
             voltage_drop = V_NOMINAL - v_under_load
             raw_multi    = 1.0 + (voltage_drop / V_NOMINAL) * 3.0
             severity_multi = min(round(raw_multi, 2), MAX_MULTIPLIER)

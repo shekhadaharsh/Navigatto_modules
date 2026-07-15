@@ -10,7 +10,6 @@ def process_vehicle_wear_task(vehicle_id: str, reg_no: str):
     import driver_module.model  # Fix: Ensure Vehicle model is loaded for SQLAlchemy relationships
     from maintenance_module.wear_engines import (
         process_vehicle_brakes,
-        process_vehicle_clutch,
         process_vehicle_tires,
         process_vehicle_battery,
         process_vehicle_engine,
@@ -27,7 +26,6 @@ def process_vehicle_wear_task(vehicle_id: str, reg_no: str):
         ).scalar()
         
         process_vehicle_brakes(db_session, vehicle_id, reg_no, max_telemetry_ts)
-        process_vehicle_clutch(db_session, vehicle_id, reg_no, max_telemetry_ts)
         process_vehicle_tires(db_session, vehicle_id, reg_no, max_telemetry_ts)
         process_vehicle_battery(db_session, vehicle_id, reg_no, max_telemetry_ts)
         process_vehicle_engine(db_session, vehicle_id, reg_no, max_telemetry_ts)

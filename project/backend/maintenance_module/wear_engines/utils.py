@@ -53,6 +53,32 @@ def ensure_wear_state_initialized(db: Session, vehicle_id: str):
     db.commit()
 
 
+def get_vehicle_g_thresholds(db: Session, vehicle_id: str):
+    """
+    Returns (harsh_brake_g, harsh_corner_g, harsh_accel_g) based on the vehicle type.
+    """
+    from driver_module.model import Vehicle
+    try:
+        vehicle = db.query(Vehicle).filter(Vehicle.id == vehicle_id).first()
+        v_type = vehicle.vehicle_type if vehicle else None
+    except Exception:
+        v_type = None
+
+    # Custom thresholds by vehicle class matching Geotab Aggressive Driving Report standards
+    if v_type == "Cargo Van":
+        # Passenger Car (G)
+        return -0.61, 0.47, 0.43
+    elif v_type == "Medium Truck":
+        # Truck/Cube Van (G)
+        return -0.54, 0.40, 0.34
+    elif v_type == "Heavy Truck" or v_type == "Heavy Duty Truck" or v_type == "Medium Duty Truck":
+        # Heavy-Duty (G)
+        return -0.47, 0.32, 0.29
+    
+    # Fallback to default constants
+    return HARSH_BRAKE_G, HARSH_CORNER_G, 0.34
+
+
 from maintenance_module.model import BrakeWearEvent, RawTelemetry
 from sqlalchemy import func
 
